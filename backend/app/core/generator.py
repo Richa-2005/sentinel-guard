@@ -42,7 +42,7 @@ class FinancialDataSynthesizer:
             "device_id": [f"dev_{np.random.randint(1111, 9999)}" for _ in range(normal_rows)],
 
             # Modeled via log-normal to simulate realistic retail pricing distributions
-            "amount_rupees": (np.random.lognormal(mean=np.log(500), sigma=1.0, size=normal_rows)).round(2),
+            "amount_paise": (np.random.lognormal(mean=np.log(50000), sigma=1.0, size=normal_rows)).astype(int),
             "merchant_category": np.random.choice(["retail", "food", "entertainment", "utility"], size=normal_rows, p=[0.4, 0.3, 0.2, 0.1]),
             "is_fraud": np.zeros(normal_rows, dtype=int)
         }
@@ -58,12 +58,12 @@ class FinancialDataSynthesizer:
         fraud_devices = [f"dev_{np.random.randint(1111, 9999)}" for _ in range(max(1, fraud_rows // 5))]
 
         fraud_data = {
-            "transation_id" : [str(uuid.uuid4())[:18] for _ in range(fraud_rows)],
+            "transaction_id" : [str(uuid.uuid4())[:18] for _ in range(fraud_rows)],
             "card_token" : np.random.choice(fraud_cards, size=fraud_rows),
             "device_id" : np.random.choice(fraud_devices, size=fraud_rows),
 
             # Botnets running card testing execute micro-charges to verify accounts
-            "amounts_rupees" : np.random.randint(47, 478, size=fraud_rows),
+            "amount_paise" : np.random.randint(4700, 47800, size=fraud_rows),
             "merchant_category": np.random.choice(["retail", "utility"], size=fraud_rows, p=[0.7, 0.3]),
             "is_fraud": np.ones(fraud_rows, dtype=int)
         }
