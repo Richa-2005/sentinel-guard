@@ -8,6 +8,7 @@ And using TimeSeriesSplit for hyperparameter tuning
 import pandas as pd
 import numpy as np
 from xgboost import XGBClassifier
+from lightgbm import LGBMClassifier
 from profiler import DatasetProfiler
 from sklearn.model_selection import TimeSeriesSplit
 
@@ -119,12 +120,92 @@ class FraudModelTrainer:
         mcc = matthews_corrcoef(self.y_test, y_preds)
         f2 = fbeta_score(self.y_test, y_preds, beta=2)
 
-        print("\nOPTIMIZED MODEL OUT-OF-SAMPLE TEST PERFORMANCE")
+        print("\nXGBoost MODEL OUT-OF-SAMPLE TEST PERFORMANCE")
         print(f"PR-AUC (Precision-Recall AUC): {pr_auc:.4f}")
         print(f"Matthews Correlation Coefficient (MCC): {mcc:.4f}")
         print(f"F2-Score (Focus on Recall): {f2:.4f}\n")
         print("Classification Report:")
         print(classification_report(self.y_test, y_preds, target_names=["Majority (0)", "Minority (1)"]))
+
+    def optimize_lightgbm(self, scale_pos_weight):
+        """Executes a chronological forward-chaining hyperparameter search for LightGBM."""
+        print("\nInitiating LightGBM Time-Series Forward-Chaining Parameter Scan...")
+        tscv = TimeSeriesSplit(n_splits=5)
+        
+        # Search space specifically tuned for Leaf-Wise structures
+        param_grid = {
+            'num_leaves': [31,63],
+            'learning_rate': [0.05, 0.1,0.2],
+            'min_child_samples': [5, 10]
+        }
+
+        best_score = -1
+        best_params = None
+
+        for num_leaves in param_grid['num_leaves']:
+            for lr in param_grid['learning_rate']:
+                for mcs in param_grid['min_child_samples']:
+                    cv_scores = []
+                    
+                    for train_idx, val_idx in tscv.split(self.X_train):
+                        X_tr, X_val = self.X_train.iloc[train_idx], self.X_train.iloc[val_idx]
+                        y_tr, y_val = self.y_train.iloc[train_idx], self.y_train.iloc[val_idx]
+
+                        clf = LGBMClassifier(
+                            num_leaves=num_leaves,
+                            learning_rate=lr,
+                            min_child_samples=mcs,
+                            scale_pos_weight=scale_pos_weight,
+                            random_state=42,
+                            n_estimators=100,
+                            verbose=-1
+                        )
+                        clf.fit(X_tr, y_tr)
+                        
+                        val_probs = clf.predict_proba(X_val)[:, 1]
+                        prec, rec, _ = precision_recall_curve(y_val, val_probs)
+                        cv_scores.append(auc(rec, prec))
+                    
+                    mean_score = np.mean(cv_scores)
+                    print(f"LGBM Candidate -> num_leaves: {num_leaves}, lr: {lr} , min_child: {mcs} | Mean CV PR-AUC: {mean_score:.4f}")
+                    
+                    if mean_score > best_score:
+                        best_score = mean_score
+                        best_params = {'num_leaves': num_leaves, 'learning_rate': lr, 'min_child_samples': mcs }
+                        
+        print(f"LightGBM Optimization Found! Parameters: {best_params}\n")
+        return best_params
+
+    def train_lightgbm(self, scale_pos_weight,best_hyperparam):
+        """Trains an optimized LightGBM classifier"""
+
+        lgb = LGBMClassifier(
+            scale_pos_weight=scale_pos_weight,
+            random_state=42,
+            n_estimators=100,
+            num_leaves=best_hyperparam['num_leaves'],
+            learning_rate=best_hyperparam['learning_rate'],
+            min_child_samples=best_hyperparam['min_child_samples'],
+            verbose=-1 
+        )
+
+        lgb.fit(self.X_train, self.y_train)
+
+        y_probs = lgb.predict_proba(self.X_test)[:, 1]
+        y_preds = lgb.predict(self.X_test)
+
+        precision, recall, _ = precision_recall_curve(self.y_test, y_probs)
+        pr_auc = auc(recall, precision)
+        mcc = matthews_corrcoef(self.y_test, y_preds)
+        f2 = fbeta_score(self.y_test, y_preds, beta=2)
+
+        print("\n LIGHTGBM MODEL OUT-OF-SAMPLE TEST PERFORMANCE")
+        print(f"PR-AUC (Precision-Recall AUC): {pr_auc:.4f}")
+        print(f"Matthews Correlation Coefficient (MCC): {mcc:.4f}")
+        print(f"F2-Score (Focus on Recall): {f2:.4f}\n")
+        print("Classification Report:")
+        print(classification_report(self.y_test, y_preds, target_names=["Majority (0)", "Minority (1)"]))
+
                 
 if __name__ == "__main__":
     trainer = FraudModelTrainer(path_data='data/transactions.csv')
@@ -133,7 +214,10 @@ if __name__ == "__main__":
     best_hyperparam = trainer.optimize_hyperparameters(scale_pos_weight)
 
     trainer.train_xgboost(scale_pos_weight,best_hyperparam)
+
+    lightbgm_param = trainer.optimize_lightgbm(scale_pos_weight)
     
+    trainer.train_lightgbm(scale_pos_weight,lightbgm_param)
     
     
     
