@@ -126,6 +126,10 @@ class FraudModelTrainer:
         print(f"F2-Score (Focus on Recall): {f2:.4f}\n")
         print("Classification Report:")
         print(classification_report(self.y_test, y_preds, target_names=["Majority (0)", "Minority (1)"]))
+        
+        model_save_path = "data/xgb_compliance_gate.json"
+        xgboost.save_model(model_save_path)
+        print(f"Frozen XGBoost tree model saved cleanly to: {model_save_path}")
 
     def optimize_lightgbm(self, scale_pos_weight):
         """Executes a chronological forward-chaining hyperparameter search for LightGBM."""
@@ -205,6 +209,10 @@ class FraudModelTrainer:
         print(f"F2-Score (Focus on Recall): {f2:.4f}\n")
         print("Classification Report:")
         print(classification_report(self.y_test, y_preds, target_names=["Majority (0)", "Minority (1)"]))
+
+        lgb_save_path = "data/lgb_compliance_gate.txt"
+        lgb.booster_.save_model(lgb_save_path)
+        print(f"Frozen LightGBM tree model saved cleanly to: {lgb_save_path}")
 
                 
 if __name__ == "__main__":
