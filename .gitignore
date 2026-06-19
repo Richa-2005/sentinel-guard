@@ -22,5 +22,9 @@ backend/data/*.log
 
 data/*.json
 data/*.txt
+
 !data/transactions.csv
+backend/data/lgb_compliance_gate.txt
+backend/data/xgb_compliance_gate.json
+
 .DS_Store
