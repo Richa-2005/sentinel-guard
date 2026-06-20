@@ -39,10 +39,13 @@ class TransactionExplainer:
         lgb_contributions = lgb_shap.values[0]
 
         feature_names = transaction_row.columns.tolist()
+
+        ens_contributions = (xgb_contributions + lgb_contributions) / 2
         
         unified_payload = {
             "xgb_feature_impacts": dict(zip(feature_names, [round(float(x), 4) for x in xgb_contributions])),
-            "lgb_feature_impacts": dict(zip(feature_names, [round(float(x), 4) for x in lgb_contributions]))
+            "lgb_feature_impacts": dict(zip(feature_names, [round(float(x), 4) for x in lgb_contributions])),
+            "ensemble_feature_impacts": dict(zip(feature_names, [round(float(x), 4) for x in ens_contributions]))
         }
 
         return json.dumps(unified_payload, indent=4)
