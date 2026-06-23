@@ -5,7 +5,11 @@ trade off. To penalize a wrong fraud detection x times more.
 """
 import pandas as pd
 import numpy as np
-from pipeline import FinancialFeaturePipeline
+
+try:
+    from .pipeline import FinancialFeaturePipeline
+except ImportError:
+    from pipeline import FinancialFeaturePipeline
 
 class DatasetProfiler:
     def __init__(self, path_data: str):
@@ -43,5 +47,4 @@ if __name__ == "__main__":
     profiler = DatasetProfiler(path_data = 'data/transactions.csv')
     fraud_percentage, scale_pos_weight = profiler.execute_audit()
     
-
 

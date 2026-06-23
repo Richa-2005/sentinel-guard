@@ -5,8 +5,13 @@ trail
 
 import json
 import requests
-from explainer import TransactionExplainer
-from trainer import FraudModelTrainer
+
+try:
+    from .explainer import TransactionExplainer
+    from .trainer import FraudModelTrainer
+except ImportError:
+    from explainer import TransactionExplainer
+    from trainer import FraudModelTrainer
 
 
 class ComplianceAgent:
@@ -73,4 +78,3 @@ if __name__ == '__main__':
         
         print("\n Sentinel Guard: LLM Generated Compliance Audit Trail")
         print(audit_report)
-

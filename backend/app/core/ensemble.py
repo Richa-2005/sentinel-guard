@@ -5,8 +5,7 @@ resulting ensemble (soft voting) is then used to tune the
 threshold to reduce false  negatives and hence increase recall.
 """
 import numpy as np
-import pandas as pd
-from trainer import FraudModelTrainer
+from core.trainer import FraudModelTrainer
 import pandas as pd
 from xgboost import XGBClassifier
 import lightgbm as lgb

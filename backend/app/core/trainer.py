@@ -9,7 +9,7 @@ import pandas as pd
 import numpy as np
 from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
-from profiler import DatasetProfiler
+from core.profiler import DatasetProfiler
 from sklearn.model_selection import TimeSeriesSplit
 
 from sklearn.metrics import (classification_report, 

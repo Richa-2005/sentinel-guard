@@ -9,7 +9,7 @@ import shap
 import pandas as pd
 from xgboost import XGBClassifier
 import lightgbm as lgb
-from trainer import FraudModelTrainer
+from core.trainer import FraudModelTrainer
 
 class TransactionExplainer:
     def __init__(self, xgb_path, lgb_path):
