@@ -3,7 +3,7 @@ import pandas as pd
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from pydantic import AliasChoices, BaseModel, Field
 from core.ensemble import FinancialEnsembleGate
 from core.explainer import TransactionExplainer
@@ -11,6 +11,7 @@ from core.agent import ComplianceAgent
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 DATA_DIR = BASE_DIR / "data"
+LOG_FILE_PATH = DATA_DIR / "compliance_audit.log"
 
 app = FastAPI(
     title="Sentinel Guard: Agentic FinTech Risk & Compliance Engine",
@@ -45,8 +46,34 @@ def startup_event():
     print("System layers activated.")
 
 
+def process_agent_audit_worker(raw_data: dict, raw_features: list):
+    """
+    Runs entirely on a separate background thread pool.
+    Computes SHAP explanations, runs local Llama 3 inference, and logs to disk.
+    """
+    try:
+        feature_order = ['amount_paise', 'card_vel_10m', 'device_card_ratio_30m']
+        input_df = pd.DataFrame([raw_features], columns=feature_order)
+        
+        shap_json_str = explainer_bridge.generate_explanation(input_df)
+        shap_payload = json.loads(shap_json_str)
+        
+        prompt = compliance_agent.compile_audit_prompt(raw_data, shap_payload)
+        audit_report = compliance_agent.generate_audit_trail(prompt)
+
+        # 4. Persistence Phase: Write the audit log entry directly to disk
+        timestamp_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log_entry = f"AUDIT ENTRY [{timestamp_str}] \nCard ID: {raw_data.get('card_id')}\n{audit_report}\n\n"
+        
+        with open(LOG_FILE_PATH, "a", encoding="utf-8") as log_file:
+            log_file.write(log_entry)
+            
+        print("[Background Thread] Compliance logs persisted to storage asset.")
+    except Exception as err:
+        print(f"[Background Thread Error] Task execution aborted: {str(err)}")
+
 @app.post("/api/v1/evaluate")
-async def evaluate_transaction(payload: TransactionPayload):
+async def evaluate_transaction(payload: TransactionPayload, background_tasks: BackgroundTasks):
     """
     Asynchronously intercept incoming transaction metrics, run ensemble evaluations,
     and trigger automated agentic audit generation if risk limits are crossed.
@@ -100,19 +127,19 @@ async def evaluate_transaction(payload: TransactionPayload):
                 "card_vel_10m": card_vel_10m,
                 "device_card_ratio_30m": round(device_card_ratio_30m, 4)
             },
-            "audit_trail": None
+            "status" : "evaluated"
         }
 
         if is_blocked:
-            print("Alert! State Hydrator confirmed threat match.")
-            feature_order = ['amount_paise', 'card_vel_10m', 'device_card_ratio_30m']
-            input_df = pd.DataFrame([raw_features], columns=feature_order)
-            
-            shap_json_str = explainer_bridge.generate_explanation(input_df)
-            shap_payload = json.loads(shap_json_str)
-            
-            prompt = compliance_agent.compile_audit_prompt(payload.model_dump(), shap_payload)
-            response_data["audit_trail"] = compliance_agent.generate_audit_trail(prompt)
+            print("Alert! High risk found, Offloading audit task to background thread pool.")
+
+            # Shunt task to worker pool instantly without waiting for completion
+            background_tasks.add_task(
+                process_agent_audit_worker, 
+                payload.model_dump(), 
+                raw_features
+            )
+            response_data["status"] = "Blocked (Audit Pending Background Compilation)"
             
         return response_data
     
