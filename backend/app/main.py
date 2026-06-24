@@ -1,6 +1,7 @@
 import uvicorn
 import pandas as pd
 import json
+from datetime import datetime, timedelta
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from pydantic import AliasChoices, BaseModel, Field
@@ -18,12 +19,14 @@ app = FastAPI(
 
 class TransactionPayload(BaseModel):
     amount_paise :int = Field(...,description="Transaction amount in local currency paise subunits")
-    card_vel_10m : float = Field(..., description="Rolling count of card uses over past 10 minutes")
-    device_card_ratio_30m: float = Field(
-        ...,
-        validation_alias=AliasChoices("device_card_ratio_30m", "device_ard_ratio_30m"),
-        description="Device-card switching profile density ratio",
-    )
+    device_id: str = Field(..., description="Hardware identifier fingerprint token")
+    card_id: str = Field(..., description="Unique token hash identifying the plastic card entity")
+
+#mapping of cards to the list of timepstamps of their swiping
+card_history = {} 
+
+#linking card to device
+device_history = {}
 
 ensemble_gate = None
 explainer_bridge = None
@@ -49,53 +52,70 @@ async def evaluate_transaction(payload: TransactionPayload):
     and trigger automated agentic audit generation if risk limits are crossed.
     """
     try:
+        current_time = datetime.now()
         # 1. Bypass Pandas completely - extract fields explicitly into a clean sequence
+        card_id = payload.card_id
+        device_id = payload.device_id
+        
+        if card_id not in card_history:
+            card_history[card_id] = []
+        if card_id not in device_history:
+            device_history[card_id] = set()
+            
+        # Append the current transaction attempt to historical memory
+        card_history[card_id].append(current_time)
+        device_history[card_id].add(device_id)
+
+        last_10m = current_time - timedelta(minutes=10)
+        
+        active_cards_time = [t for t in card_history[card_id] if t >= last_10m]
+        card_history[card_id] = active_cards_time #saves memory 
+
+        card_vel_10m = len(active_cards_time)
+
+        unique_devices_used = len(device_history[card_id])
+        device_card_ratio_30m = float(unique_devices_used / card_vel_10m)
+
         raw_features = [
             float(payload.amount_paise),
-            float(payload.card_vel_10m),
-            float(payload.device_card_ratio_30m)
+            card_vel_10m,
+            device_card_ratio_30m
         ]
         
-        # Wrap into a raw 2D array format matrix layout required by C-engines [[val1, val2, val3]]
         input_matrix = [raw_features]
         
-        # 2. Extract XGBoost standard probability natively
         p_xgb = float(ensemble_gate.xgb.predict_proba(input_matrix)[:, 1][0])
         
-        # 3. Extract LightGBM native prediction from the identical layout
         p_lgb = float(ensemble_gate.lgb.predict(input_matrix)[0])
-        
-        # Active debugging trace log
-        print(f"📡 GATEWAY TRACE -> Features Sent: {raw_features} | XGB: {p_xgb:.4f} | LGB: {p_lgb:.4f}")
-
-        # Compute combined ensemble score
+    
         ensemble_prob = (p_xgb + p_lgb) / 2
 
         CALIBRATED_THRESHOLD = 0.01
         is_blocked = ensemble_prob >= CALIBRATED_THRESHOLD
         
         response_data = {
-            "is_blocked": is_blocked,
+           "is_blocked": is_blocked,
             "ensemble_risk_score": round(ensemble_prob, 4),
+            "hydrated_metrics": {
+                "card_vel_10m": card_vel_10m,
+                "device_card_ratio_30m": round(device_card_ratio_30m, 4)
+            },
             "audit_trail": None
         }
 
         if is_blocked:
-            print("🚨 High Risk Anomaly Detected! Launching Automated Agentic Audit Trail...")
-            
-            # FIXED: Reconstruct the exact DataFrame format that the SHAP explainer needs
+            print("Alert! State Hydrator confirmed threat match.")
             feature_order = ['amount_paise', 'card_vel_10m', 'device_card_ratio_30m']
             input_df = pd.DataFrame([raw_features], columns=feature_order)
             
-            # Pass it safely to the SHAP engine
             shap_json_str = explainer_bridge.generate_explanation(input_df)
             shap_payload = json.loads(shap_json_str)
             
-            prompt = compliance_agent.compile_audit_prompt(raw_features, shap_payload)
-            audit_report = compliance_agent.generate_audit_trail(prompt)
-            response_data["audit_trail"] = audit_report
+            prompt = compliance_agent.compile_audit_prompt(payload.model_dump(), shap_payload)
+            response_data["audit_trail"] = compliance_agent.generate_audit_trail(prompt)
             
         return response_data
+    
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal Risk Core Exception: {str(e)}")
 
