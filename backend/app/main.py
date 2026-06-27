@@ -8,6 +8,7 @@ from pydantic import AliasChoices, BaseModel, Field
 from core.ensemble import FinancialEnsembleGate
 from core.explainer import TransactionExplainer
 from core.agent import ComplianceAgent
+from core.config import SystemRiskConfig
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 DATA_DIR = BASE_DIR / "data"
@@ -88,6 +89,15 @@ async def evaluate_transaction(payload: TransactionPayload, background_tasks: Ba
             card_history[card_id] = []
         if card_id not in device_history:
             device_history[card_id] = set()
+        
+        # --- High-Performance Ledger Pruning ---
+        # If the history ledger gets too wide, prune cards that haven't swiped recently
+        if len(card_history) > 10000:
+            # Drop the oldest 1,000 keys to release memory overhead back to the OS
+            sample_keys = list(card_history.keys())[:1000]
+            for k in sample_keys:
+                card_history.pop(k, None)
+                device_history.pop(k, None)
             
         # Append the current transaction attempt to historical memory
         card_history[card_id].append(current_time)
@@ -117,8 +127,7 @@ async def evaluate_transaction(payload: TransactionPayload, background_tasks: Ba
     
         ensemble_prob = (p_xgb + p_lgb) / 2
 
-        CALIBRATED_THRESHOLD = 0.01
-        is_blocked = ensemble_prob >= CALIBRATED_THRESHOLD
+        is_blocked = ensemble_prob >= SystemRiskConfig.CALIBRATED_THRESHOLD
         
         response_data = {
            "is_blocked": is_blocked,
