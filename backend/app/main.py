@@ -9,6 +9,8 @@ from core.ensemble import FinancialEnsembleGate
 from core.explainer import TransactionExplainer
 from core.agent import ComplianceAgent
 from core.config import SystemRiskConfig
+from core.database import SentinelDatabase
+
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 DATA_DIR = BASE_DIR / "data"
@@ -23,27 +25,24 @@ class TransactionPayload(BaseModel):
     amount_paise :int = Field(...,description="Transaction amount in local currency paise subunits")
     device_id: str = Field(..., description="Hardware identifier fingerprint token")
     card_id: str = Field(..., description="Unique token hash identifying the plastic card entity")
-
-#mapping of cards to the list of timepstamps of their swiping
-card_history = {} 
-
-#linking card to device
-device_history = {}
+    merchant_id: str = Field(...,description="Merchant category for each transaction")
 
 ensemble_gate = None
 explainer_bridge = None
 compliance_agent = None
+db = None
 
 #Start all the engines at the start of the server
 @app.on_event("startup") 
 def startup_event():
-    global ensemble_gate, explainer_bridge, compliance_agent
+    global ensemble_gate, explainer_bridge, compliance_agent, db
     lgb_path = DATA_DIR / "lgb_compliance_gate.txt"
     xgb_path = DATA_DIR / "xgb_compliance_gate.json"
 
     ensemble_gate = FinancialEnsembleGate(xgb_path,lgb_path)
     explainer_bridge = TransactionExplainer(xgb_path,lgb_path)
     compliance_agent = ComplianceAgent()
+    db = SentinelDatabase()
     print("System layers activated.")
 
 
@@ -81,43 +80,85 @@ async def evaluate_transaction(payload: TransactionPayload, background_tasks: Ba
     """
     try:
         current_time = datetime.now()
+        timestamp_now_str = current_time.isoformat()
+
         # 1. Bypass Pandas completely - extract fields explicitly into a clean sequence
         card_id = payload.card_id
         device_id = payload.device_id
-        
-        if card_id not in card_history:
-            card_history[card_id] = []
-        if card_id not in device_history:
-            device_history[card_id] = set()
-        
-        # --- High-Performance Ledger Pruning ---
-        # If the history ledger gets too wide, prune cards that haven't swiped recently
-        if len(card_history) > 10000:
-            # Drop the oldest 1,000 keys to release memory overhead back to the OS
-            sample_keys = list(card_history.keys())[:1000]
-            for k in sample_keys:
-                card_history.pop(k, None)
-                device_history.pop(k, None)
+        merchant = payload.merchant_id
+
+        with db.connection() as conn:
+
+            last_10m = (current_time - timedelta(minutes=10)).isoformat()
+            last_30m = (current_time - timedelta(minutes=30)).isoformat()
+            last_24h = (current_time - timedelta(hours=24)).isoformat()
+
+            row_vel = conn.execute("""
+                            SELECT COUNT(*) as cnt FROM transactions_ledger 
+                            WHERE card_id= ? AND timestamp >= ?;
+                            """,
+                            (card_id, last_10m)).fetchone()
+            card_vel_10m = row_vel["cnt"]
+
+            row_ratio = conn.execute("""
+                            SELECT COUNT(DISTINCT device_id) as dcnt,COUNT(card_id) as cnt
+                            FROM transactions_ledger
+                            WHERE card_id = ? AND timestamp >= ?;
+                            """,
+                            (card_id,last_30m)).fetchone()
             
-        # Append the current transaction attempt to historical memory
-        card_history[card_id].append(current_time)
-        device_history[card_id].add(device_id)
+            if row_ratio["cnt"] > 0:
+                device_card_ratio_30m = float(row_ratio["dcnt"] / row_ratio["cnt"])
+            else:
+                device_card_ratio_30m = 1.0
 
-        last_10m = current_time - timedelta(minutes=10)
-        
-        active_cards_time = [t for t in card_history[card_id] if t >= last_10m]
-        card_history[card_id] = active_cards_time #saves memory 
+            row_device =  conn.execute("""
+                            SELECT COUNT(DISTINCT card_id) as cnt FROM transactions_ledger
+                            WHERE device_id = ? AND timestamp >= ?;
+                            """,
+                            (device_id,last_24h)).fetchone()
+            device_card = row_device["cnt"]
+            device_card_limit = 1.0 if device_card > 3 else 0.0
 
-        card_vel_10m = len(active_cards_time)
+            row_merchant = conn.execute("""
+                            SELECT COUNT(*) as cnt FROM merchant_history
+                            WHERE card_id = ? AND merchant_id = ?;
+                            """,
+                            (card_id,merchant)).fetchone()
 
-        unique_devices_used = len(device_history[card_id])
-        device_card_ratio_30m = float(unique_devices_used / card_vel_10m)
+            is_known_merchant = 1.0 if row_merchant["cnt"] >= 1 else 0.0
+
+
+            #Inserting the new data
+            conn.execute(
+                """
+                INSERT INTO transactions_ledger (card_id, device_id, merchant_id, timestamp) 
+                VALUES (?, ?, ?, ?);
+                """,
+                (card_id, device_id, merchant, timestamp_now_str)
+            )
+            print(conn.execute("SELECT * FROM transactions_ledger"))
+            
+            if is_known_merchant == 0.0:
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO merchant_history (card_id, merchant_id) 
+                    VALUES (?, ?);
+                    """,
+                    (card_id, merchant)
+                )
+                print(conn.execute("SELECT * FROM merchant_history"))
+            
 
         raw_features = [
             float(payload.amount_paise),
             card_vel_10m,
             device_card_ratio_30m
         ]
+        
+        #Time of the swap risk
+        current_hour = current_time.hour 
+        is_off_hours_window = 1.0 if (1 <= current_hour <= 5) else 0.0
         
         input_matrix = [raw_features]
         
@@ -134,7 +175,10 @@ async def evaluate_transaction(payload: TransactionPayload, background_tasks: Ba
             "ensemble_risk_score": round(ensemble_prob, 4),
             "hydrated_metrics": {
                 "card_vel_10m": card_vel_10m,
-                "device_card_ratio_30m": round(device_card_ratio_30m, 4)
+                "device_card_ratio_30m": round(device_card_ratio_30m, 4),
+                "device_card_limit_crossed":device_card_limit,
+                "is_known_merchant":is_known_merchant,
+                "is_off_hours_window":is_off_hours_window
             },
             "status" : "evaluated"
         }
