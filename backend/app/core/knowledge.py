@@ -1,7 +1,6 @@
 import csv
 import re
 from pathlib import Path
-from app.main import TransactionPayload
 
 class KnowledgeBaseManager:
     """Load and normalize the documents used by the compliance knowledge base."""

@@ -46,7 +46,7 @@ def startup_event():
     print("System layers activated.")
 
 
-def process_agent_audit_worker(raw_data: dict, raw_features: list):
+def process_agent_audit_worker(raw_data: dict, raw_features: list, hydrated_metrics : dict):
     """
     Runs entirely on a separate background thread pool.
     Computes SHAP explanations, runs local Llama 3 inference, and logs to disk.
@@ -58,17 +58,17 @@ def process_agent_audit_worker(raw_data: dict, raw_features: list):
         shap_json_str = explainer_bridge.generate_explanation(input_df)
         shap_payload = json.loads(shap_json_str)
         
-        prompt = compliance_agent.compile_audit_prompt(raw_data, shap_payload)
-        audit_report = compliance_agent.generate_audit_trail(prompt)
+        print("[Background Thread] Initializing compliance graph audit state app...")
+        final_signed_memo = compliance_agent.run_graph_audit(
+            transaction_data=raw_data,
+            hydrated_metrics=hydrated_metrics,
+            shap_payload=shap_payload
+        )
 
-        # 4. Persistence Phase: Write the audit log entry directly to disk
-        timestamp_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        log_entry = f"AUDIT ENTRY [{timestamp_str}] \nCard ID: {raw_data.get('card_id')}\n{audit_report}\n\n"
-        
         with open(LOG_FILE_PATH, "a", encoding="utf-8") as log_file:
-            log_file.write(log_entry)
+            log_file.write(f"\n{final_signed_memo}\n")
             
-        print("[Background Thread] Compliance logs persisted to storage asset.")
+        print("[Background Thread] Cryptographically signed compliance logs successfully written to disk storage.")
     except Exception as err:
         print(f"[Background Thread Error] Task execution aborted: {str(err)}")
 
@@ -170,16 +170,18 @@ async def evaluate_transaction(payload: TransactionPayload, background_tasks: Ba
 
         is_blocked = ensemble_prob >= SystemRiskConfig.CALIBRATED_THRESHOLD
         
-        response_data = {
-           "is_blocked": is_blocked,
-            "ensemble_risk_score": round(ensemble_prob, 4),
-            "hydrated_metrics": {
+        hydrated_metrics = {
                 "card_vel_10m": card_vel_10m,
                 "device_card_ratio_30m": round(device_card_ratio_30m, 4),
                 "device_card_limit_crossed":device_card_limit,
                 "is_known_merchant":is_known_merchant,
                 "is_off_hours_window":is_off_hours_window
-            },
+        }
+
+        response_data = {
+           "is_blocked": is_blocked,
+            "ensemble_risk_score": round(ensemble_prob, 4),
+            "hydrated_metrics":hydrated_metrics,
             "status" : "evaluated"
         }
 
@@ -190,7 +192,8 @@ async def evaluate_transaction(payload: TransactionPayload, background_tasks: Ba
             background_tasks.add_task(
                 process_agent_audit_worker, 
                 payload.model_dump(), 
-                raw_features
+                raw_features,
+                hydrated_metrics
             )
             response_data["status"] = "Blocked (Audit Pending Background Compilation)"
             

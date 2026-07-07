@@ -31,3 +31,5 @@ backend/data/network_tos.txt
 backend/data/rbi_circular.txt
 
 .DS_Store
+
+backend/app/data

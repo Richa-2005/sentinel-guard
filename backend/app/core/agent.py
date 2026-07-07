@@ -10,11 +10,11 @@ from langgraph.graph import StateGraph, END,START
 import hashlib
 from pathlib import Path
 
-from app.core.knowledge import KnowledgeBaseManager  
+from core.knowledge import KnowledgeBaseManager  
 
 kb_manager = KnowledgeBaseManager()
 
-BASE_DIR = Path(__file__).resolve().parents[1]
+BASE_DIR = Path(__file__).resolve().parents[2]
 DATA_DIR = BASE_DIR / "data"
 HASH_TRACKER_PATH = DATA_DIR / "last_ledger_hash.txt"
 
