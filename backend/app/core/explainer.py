@@ -9,7 +9,7 @@ import shap
 import pandas as pd
 from xgboost import XGBClassifier
 import lightgbm as lgb
-from core.trainer import FraudModelTrainer
+from app.core.trainer import FraudModelTrainer
 
 class TransactionExplainer:
     def __init__(self, xgb_path, lgb_path):
@@ -60,12 +60,11 @@ if __name__ == "__main__":
     scale_pos_weight = trainer.prepare_datasets()
 
     sample = trainer.X_test[trainer.y_test == 1].head(1)
-    
+
     if not sample.empty:
         json_output = tExp.generate_explanation(sample)
         print("\nSentinel Guard: Explainability Bridge Vector Locked ---")
         print(json_output)
-        
+
     else:
         print("No fraud flags found in test slice validation checks.")
-    

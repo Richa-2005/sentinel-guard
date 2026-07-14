@@ -66,6 +66,7 @@ def get_transactions():
             result = []
             for r in rows:
                 result.append({
+                    "transaction_id": r["transaction_id"],
                     "card_id": r["card_id"], "device_id": r["device_id"], "merchant_id": r["merchant_id"],
                     "timestamp": r["timestamp"], "amount_paise": r["amount_paise"] or 0,
                     "ensemble_risk_score": r["ensemble_risk_score"] or 0.0, "is_blocked": bool(r["is_blocked"]),
@@ -81,7 +82,7 @@ def get_transactions():
 def get_merchants():
     """Exposes the MCC dynamically fetched dynamic mapping indices."""
     try:
-        from core.agent import kb_manager
+        from app.core.agent import kb_manager
         return kb_manager.mcc_registry
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -96,7 +97,7 @@ def get_audits():
 @app.get("/api/v1/debug-fraud-sample")
 def get_fraud_sample():
     try:
-        from core.trainer import FraudModelTrainer
+        from app.core.trainer import FraudModelTrainer
         trainer = FraudModelTrainer("data/transactions.csv")
         _ = trainer.prepare_datasets()
         fraud_rows = trainer.X_test[trainer.y_test == 1]
@@ -108,4 +109,4 @@ def get_fraud_sample():
 
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)

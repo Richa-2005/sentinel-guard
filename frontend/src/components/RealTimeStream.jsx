@@ -17,7 +17,10 @@ const formatCurrency = (value = 0) => new Intl.NumberFormat('en-IN', { style: 'c
 const formatTime = (value) => value ? new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—';
 
 export default function RealTimeStream() {
-  const { transactions, merchants, stats, health, dataError, addTransaction, audits, pollForAudit, setNotice } = useApp();
+  const {
+    transactions, liveStream, merchants, health, dataError, addTransaction, queueAudit,
+    auditStatuses, connectionStatus, lastEventAt, reconnectAttempt, streamError, setNotice,
+  } = useApp();
   const [form, setForm] = useState(defaultForm);
   const [submitting, setSubmitting] = useState(false);
   const [requestError, setRequestError] = useState('');
@@ -30,11 +33,13 @@ export default function RealTimeStream() {
     setSubmitting(true);
     setRequestError('');
     try {
-      const result = await evaluateTransaction(payload);
-      const entry = addTransaction({ ...payload, ...result, timestamp: new Date().toISOString() });
+      const transactionId = payload.transaction_id || crypto.randomUUID();
+      const requestPayload = { ...payload, transaction_id: transactionId };
+      const result = await evaluateTransaction(requestPayload);
+      const entry = addTransaction({ ...requestPayload, ...result, timestamp: new Date().toISOString() });
       if (result.is_blocked) {
         setNotice({ tone: 'danger', title: 'Transaction blocked', message: `${payload.card_id} exceeded the current model decision boundary.` });
-        pollForAudit(audits.length);
+        queueAudit(result.transaction_id || transactionId);
       } else if (!automated) {
         setNotice({ tone: 'success', title: 'Transaction approved', message: `${payload.card_id} cleared the ensemble gate.` });
       }
@@ -46,16 +51,30 @@ export default function RealTimeStream() {
     } finally {
       setSubmitting(false);
     }
-  }, [addTransaction, audits.length, pollForAudit, setNotice]);
+  }, [addTransaction, queueAudit, setNotice]);
 
   const simulator = useTrafficSimulator(merchants, sendTransaction, health === 'online');
   const merchantOptions = useMemo(() => Object.entries(merchants).map(([id, item]) => ({ id, ...item })), [merchants]);
-  const sortedTransactions = useMemo(() => [...transactions].sort((a, b) => {
+  const activityTransactions = useMemo(() => {
+    const indexed = new Map();
+    [...transactions, ...liveStream].forEach((item) => {
+      const key = item.transaction_id || item._key || `${item.timestamp}:${item.card_id}:${item.amount_paise}`;
+      indexed.set(key, { ...indexed.get(key), ...item, _key: key });
+    });
+    return [...indexed.values()].sort((left, right) => new Date(right.timestamp || 0) - new Date(left.timestamp || 0));
+  }, [transactions, liveStream]);
+  const liveStats = useMemo(() => {
+    const total = activityTransactions.length;
+    const blocked = activityTransactions.filter((item) => item.is_blocked).length;
+    const approved = total - blocked;
+    return { total, blocked, approved, approvalRate: total ? (approved / total) * 100 : 100 };
+  }, [activityTransactions]);
+  const sortedTransactions = useMemo(() => [...activityTransactions].sort((a, b) => {
     const left = a[sort.key] ?? '';
     const right = b[sort.key] ?? '';
     const comparison = typeof left === 'number' ? left - right : String(left).localeCompare(String(right));
     return sort.direction === 'asc' ? comparison : -comparison;
-  }), [transactions, sort]);
+  }), [activityTransactions, sort]);
 
   const setSortKey = (key) => setSort((current) => ({ key, direction: current.key === key && current.direction === 'desc' ? 'asc' : 'desc' }));
   const parentRef = useRef(null);
@@ -92,21 +111,28 @@ export default function RealTimeStream() {
   };
 
   const simulatorLabel = { stopped: 'Stopped', running: 'Evaluating', waiting: 'Rate limited', offline: 'Paused — offline' }[simulator.status];
+  const streamLabel = {
+    connected: 'Live stream connected',
+    connecting: 'Connecting live stream',
+    reconnecting: `Reconnecting live stream${reconnectAttempt ? ` · attempt ${reconnectAttempt}` : ''}`,
+    offline: 'Live stream disconnected',
+  }[connectionStatus] || 'Live stream unavailable';
+  const lastEventLabel = lastEventAt ? `Last event ${formatTime(lastEventAt)}` : 'Awaiting first event';
 
   return (
     <div className="page-stack">
-      <section className={`status-band status-band--${health}`} aria-live="polite">
-        <div><span className={`status-dot status-dot--${health}`} /><strong>{health === 'online' ? 'Decision pipeline operational' : 'Decision pipeline unavailable'}</strong><span>{health === 'online' ? 'Live evaluations and audit offloading are available.' : 'Start the backend risk core before submitting traffic.'}</span></div>
+      <section className={`status-band status-band--${connectionStatus}`} aria-live="polite">
+        <div><span className={`status-dot status-dot--${connectionStatus === 'connected' ? 'online' : connectionStatus === 'reconnecting' ? 'checking' : 'offline'}`} /><strong>{streamLabel}</strong><span>{health === 'online' ? `${lastEventLabel} · HTTP decision pipeline operational.` : 'The backend risk core is currently unavailable.'}</span></div>
         <Badge tone={simulator.status === 'offline' ? 'critical' : simulator.status === 'stopped' ? 'neutral' : 'info'}>Simulator: {simulatorLabel}</Badge>
       </section>
 
-      {(dataError || requestError) && <div className="inline-alert" role="alert"><AlertTriangle size={17} /><div><strong>Operational attention required</strong><p>{requestError || dataError}</p></div></div>}
+      {(dataError || requestError || streamError) && <div className="inline-alert" role="alert"><AlertTriangle size={17} /><div><strong>Operational attention required</strong><p>{requestError || dataError || streamError}</p></div></div>}
 
       <section className="metric-grid" aria-label="Transaction metrics">
-        <Metric label="Processed" value={stats.total} detail="Loaded ledger" />
-        <Metric label="Approved" value={stats.approved} detail="Passed decision gate" tone="success" />
-        <Metric label="Blocked" value={stats.blocked} detail="Requires review" tone="critical" />
-        <Metric label="Approval rate" value={`${stats.approvalRate.toFixed(1)}%`} detail="Current loaded sample" tone="info" />
+        <Metric label="Processed" value={liveStats.total} detail="Live + loaded ledger" />
+        <Metric label="Approved" value={liveStats.approved} detail="Passed decision gate" tone="success" />
+        <Metric label="Blocked" value={liveStats.blocked} detail="Requires review" tone="critical" />
+        <Metric label="Approval rate" value={`${liveStats.approvalRate.toFixed(1)}%`} detail="Current activity sample" tone="info" />
       </section>
 
       <div className="live-layout">
@@ -123,15 +149,15 @@ export default function RealTimeStream() {
           </form>
         </Panel>
 
-        <Panel title="Activity ledger" eyebrow="Live stream" className="ledger-panel" action={<span className="panel-count">{transactions.length} records</span>}>
-          {transactions.length === 0 ? <EmptyState title="No transaction activity" message="Evaluate a transaction or start automated traffic to populate the ledger." /> : <div className="data-table" role="table" aria-label="Transaction activity">
+        <Panel title="Activity ledger" eyebrow="Live stream" className="ledger-panel" action={<span className="panel-count">{liveStream.length} live · {activityTransactions.length} loaded</span>}>
+          {activityTransactions.length === 0 ? <EmptyState title="No transaction activity" message="Evaluate a transaction or start automated traffic to populate the ledger." /> : <div className="data-table" role="table" aria-label="Transaction activity">
             <div className="table-header" role="row">{[['timestamp','Time'],['card_id','Identity'],['merchant_id','MCC'],['amount_paise','Amount'],['ensemble_risk_score','Risk'],['is_blocked','Decision']].map(([key,label]) => <button key={key} role="columnheader" onClick={() => setSortKey(key)}>{label}<ArrowDownUp size={11} /></button>)}</div>
-            <div className="virtual-table" ref={parentRef}><div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>{virtualizer.getVirtualItems().map((row) => { const item = sortedTransactions[row.index]; return <button key={item._key || `${item.timestamp}-${row.index}`} className={`table-row ${item.is_blocked ? 'table-row--blocked' : ''}`} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: row.size, transform: `translateY(${row.start}px)` }} onClick={() => setSelected(item)} role="row"><span role="cell" className="mono">{formatTime(item.timestamp)}</span><span role="cell"><strong className="mono">{item.card_id}</strong><small className="mono">{item.device_id}</small></span><span role="cell" className="mono">{item.merchant_id}</span><span role="cell" className="mono">{formatCurrency(item.amount_paise)}</span><span role="cell" className="mono">{(Number(item.ensemble_risk_score) * 100).toFixed(2)}%</span><span role="cell"><Badge tone={item.is_blocked ? 'critical' : 'success'}>{item.is_blocked ? 'Blocked' : 'Approved'}</Badge><ChevronRight size={14} /></span></button>; })}</div></div>
+            <div className="virtual-table" ref={parentRef}><div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>{virtualizer.getVirtualItems().map((row) => { const item = sortedTransactions[row.index]; const auditState = item.is_blocked ? auditStatuses[item.transaction_id]?.status : null; return <button key={item._key || `${item.timestamp}-${row.index}`} className={`table-row ${item.is_blocked ? 'table-row--blocked' : ''}`} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: row.size, transform: `translateY(${row.start}px)` }} onClick={() => setSelected(item)} role="row"><span role="cell" className="mono">{formatTime(item.timestamp)}</span><span role="cell"><strong className="mono">{item.card_id}</strong><small className="mono">{item.device_id}</small></span><span role="cell" className="mono">{item.merchant_id}</span><span role="cell" className="mono">{formatCurrency(item.amount_paise)}</span><span role="cell" className="mono">{(Number(item.ensemble_risk_score) * 100).toFixed(2)}%</span><span role="cell"><span className="decision-cell"><Badge tone={item.is_blocked ? 'critical' : 'success'}>{item.is_blocked ? 'Blocked' : 'Approved'}</Badge>{auditState && <small className={`audit-lifecycle audit-lifecycle--${auditState}`}>{auditState === 'processing' ? 'Audit processing' : auditState === 'complete' ? 'Audit ready' : auditState === 'failed' ? 'Audit failed' : 'Audit delayed'}</small>}</span><ChevronRight size={14} /></span></button>; })}</div></div>
           </div>}
         </Panel>
       </div>
 
-      {selected && <div className="drawer-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setSelected(null)}><aside className="drawer" role="dialog" aria-modal="true" aria-labelledby="transaction-drawer-title"><header><div><span className="eyebrow">Transaction record</span><h2 id="transaction-drawer-title" className="mono">{selected.card_id}</h2></div><button className="icon-button" onClick={() => setSelected(null)} aria-label="Close transaction details"><X size={18} /></button></header><div className="drawer-content"><div className={`decision-summary ${selected.is_blocked ? 'decision-summary--blocked' : ''}`}>{selected.is_blocked ? <AlertTriangle size={20} /> : <CheckCircle2 size={20} />}<div><strong>{selected.is_blocked ? 'Blocked by ensemble gate' : 'Approved by ensemble gate'}</strong><span className="mono">{(Number(selected.ensemble_risk_score) * 100).toFixed(3)}% model score</span></div></div><dl className="detail-list"><div><dt>Amount</dt><dd className="mono">{formatCurrency(selected.amount_paise)}</dd></div><div><dt>Device</dt><dd className="mono">{selected.device_id}</dd></div><div><dt>Merchant</dt><dd className="mono">{selected.merchant_id}</dd></div><div><dt>Evaluated</dt><dd className="mono">{new Date(selected.timestamp).toLocaleString()}</dd></div></dl><pre className="payload-block">{JSON.stringify(selected.hydrated_metrics || {}, null, 2)}</pre></div></aside></div>}
+      {selected && <div className="drawer-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setSelected(null)}><aside className="drawer" role="dialog" aria-modal="true" aria-labelledby="transaction-drawer-title"><header><div><span className="eyebrow">Transaction record</span><h2 id="transaction-drawer-title" className="mono">{selected.card_id}</h2></div><button className="icon-button" onClick={() => setSelected(null)} aria-label="Close transaction details"><X size={18} /></button></header><div className="drawer-content"><div className={`decision-summary ${selected.is_blocked ? 'decision-summary--blocked' : ''}`}>{selected.is_blocked ? <AlertTriangle size={20} /> : <CheckCircle2 size={20} />}<div><strong>{selected.is_blocked ? 'Blocked by ensemble gate' : 'Approved by ensemble gate'}</strong><span className="mono">{(Number(selected.ensemble_risk_score) * 100).toFixed(3)}% model score</span></div></div>{selected.is_blocked && <div className={`audit-progress audit-progress--${auditStatuses[selected.transaction_id]?.status || 'processing'}`} role="status"><strong>{auditStatuses[selected.transaction_id]?.status === 'complete' ? 'Compliance memo ready' : auditStatuses[selected.transaction_id]?.status === 'failed' ? 'Compliance memo failed' : auditStatuses[selected.transaction_id]?.status === 'delayed' ? 'Compliance memo delayed' : 'Processing compliance memo'}</strong><span>The transaction decision is final; audit generation continues independently.</span></div>}<dl className="detail-list"><div><dt>Transaction ID</dt><dd className="mono">{selected.transaction_id || 'Legacy record'}</dd></div><div><dt>Amount</dt><dd className="mono">{formatCurrency(selected.amount_paise)}</dd></div><div><dt>Device</dt><dd className="mono">{selected.device_id}</dd></div><div><dt>Merchant</dt><dd className="mono">{selected.merchant_id}</dd></div><div><dt>Evaluated</dt><dd className="mono">{new Date(selected.timestamp).toLocaleString()}</dd></div></dl><pre className="payload-block">{JSON.stringify(selected.hydrated_metrics || {}, null, 2)}</pre></div></aside></div>}
     </div>
   );
 }

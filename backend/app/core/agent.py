@@ -10,7 +10,7 @@ from langgraph.graph import StateGraph, END,START
 import hashlib
 from pathlib import Path
 
-from core.knowledge import KnowledgeBaseManager  
+from app.core.knowledge import KnowledgeBaseManager
 
 kb_manager = KnowledgeBaseManager()
 

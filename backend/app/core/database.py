@@ -14,6 +14,7 @@ DEFAULT_DATABASE_PATH = BACKEND_DIR / "data" / "sentinel_storage.db"
 SCHEMA_STATEMENTS: tuple[str, ...] = (
     """
     CREATE TABLE IF NOT EXISTS transactions_ledger (
+        transaction_id TEXT UNIQUE,
         card_id TEXT NOT NULL,
         device_id TEXT NOT NULL,
         merchant_id TEXT NOT NULL,
@@ -89,6 +90,8 @@ class SentinelDatabase:
             cursor = connection.execute("PRAGMA table_info(transactions_ledger);")
             columns = [row["name"] for row in cursor.fetchall()]
 
+            if "transaction_id" not in columns:
+                connection.execute("ALTER TABLE transactions_ledger ADD COLUMN transaction_id TEXT;")
             if "amount_paise" not in columns:
                 connection.execute("ALTER TABLE transactions_ledger ADD COLUMN amount_paise INTEGER;")
             if "ensemble_risk_score" not in columns:
@@ -99,6 +102,21 @@ class SentinelDatabase:
                 connection.execute("ALTER TABLE transactions_ledger ADD COLUMN hydrated_metrics TEXT;")
             if "shap_payload" not in columns:
                 connection.execute("ALTER TABLE transactions_ledger ADD COLUMN shap_payload TEXT;")
+
+            # Stable IDs make HTTP responses, WebSocket events, and audits reconcilable.
+            connection.execute(
+                """
+                UPDATE transactions_ledger
+                SET transaction_id = 'legacy-' || rowid
+                WHERE transaction_id IS NULL OR transaction_id = '';
+                """
+            )
+            connection.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_ledger_transaction_id
+                ON transactions_ledger(transaction_id);
+                """
+            )
 
             # Backfill existing transaction ledger records that have NULL values
             rows_to_backfill = connection.execute(

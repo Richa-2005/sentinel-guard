@@ -9,7 +9,7 @@ import pandas as pd
 import numpy as np
 from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
-from core.profiler import DatasetProfiler
+from app.core.profiler import DatasetProfiler
 from sklearn.model_selection import TimeSeriesSplit
 
 from sklearn.metrics import (classification_report, 
@@ -224,8 +224,7 @@ if __name__ == "__main__":
     trainer.train_xgboost(scale_pos_weight,best_hyperparam)
 
     lightbgm_param = trainer.optimize_lightgbm(scale_pos_weight)
-    
+
     trainer.train_lightgbm(scale_pos_weight,lightbgm_param)
-    
-    
-    
+
+

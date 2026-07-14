@@ -204,7 +204,7 @@ a { color: inherit; text-decoration: none; }
 .csv-drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .field-message { margin: -6px 0 0; color: var(--info); font-size: 9px; line-height: 1.5; }
 .data-table { width: 100%; overflow: hidden; }
-.table-header, .table-row { display: grid; grid-template-columns: 82px minmax(150px,1.35fr) 56px 100px 78px 104px; align-items: center; }
+.table-header, .table-row { display: grid; grid-template-columns: 82px minmax(150px,1.35fr) 56px 100px 78px 132px; align-items: center; }
 .table-header { height: 38px; padding: 0 10px; border-bottom: 1px solid var(--border); background: var(--workspace); }
 .table-header button { display: flex; align-items: center; gap: 5px; padding: 0 5px; border: 0; background: transparent; color: var(--text-faint); font-size: 8px; font-weight: 700; letter-spacing: .05em; text-align: left; text-transform: uppercase; }
 .virtual-table { height: 510px; overflow: auto; contain: strict; }
@@ -216,6 +216,15 @@ a { color: inherit; text-decoration: none; }
 .table-row > span:nth-child(2) strong { color: var(--text); font-size: 9px; font-weight: 500; }
 .table-row > span:nth-child(2) small { margin-top: 3px; color: var(--text-faint); font-size: 8px; }
 .table-row > span:last-child { display: flex; align-items: center; gap: 6px; }
+.decision-cell { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.audit-lifecycle { color: var(--text-faint); font-family: 'JetBrains Mono'; font-size: 7px; line-height: 1; }
+.audit-lifecycle--complete { color: var(--success); }
+.audit-lifecycle--failed, .audit-lifecycle--delayed { color: var(--warning); }
+.audit-progress { display: flex; flex-direction: column; gap: 4px; padding: 11px 12px; border: 1px solid var(--border); border-left: 3px solid var(--info); border-radius: 8px; background: var(--surface-raised); }
+.audit-progress strong { font-size: 10px; }
+.audit-progress span { color: var(--text-muted); font-size: 9px; }
+.audit-progress--complete { border-left-color: var(--success); }
+.audit-progress--failed, .audit-progress--delayed { border-left-color: var(--warning); }
 
 /* Overlay surfaces */
 .drawer-layer, .dialog-layer { position: fixed; inset: 0; z-index: 100; display: flex; justify-content: flex-end; background: rgba(4,8,14,.68); backdrop-filter: blur(3px); }

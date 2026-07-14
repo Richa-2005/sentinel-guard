@@ -1,46 +1,69 @@
 import asyncio
 import json
+import uuid
 import pandas as pd
 from datetime import datetime, timedelta
 from app.config import settings
-from core.config import SystemRiskConfig
-from core.database import SentinelDatabase
+from app.core.config import SystemRiskConfig
+from app.core.database import SentinelDatabase
 from app.services.engine_service import ml_executor, compute_ml_and_shap
 from app.services.websocket_service import ws_manager
 
 db = SentinelDatabase()
 
-def process_agent_audit_worker(
-        raw_data: dict, raw_features: list, 
-        hydrated_metrics: dict, compliance_agent, 
-        explainer_bridge
-):
-    
-    """
-    Runs entirely within the separate background tasks pool worker threads.
-    Computes SHAP explainability matrices and runs local Llama inference.
-    """
-    try:
-        feature_order = ['amount_paise', 'card_vel_10m', 'device_card_ratio_30m']
-        input_df = pd.DataFrame([raw_features], columns=feature_order)
-        
-        shap_json_str = explainer_bridge.generate_explanation(input_df)
-        shap_payload = json.loads(shap_json_str)
-        
-        print("[Background Thread] Initializing compliance graph audit state app...")
-        final_signed_memo = compliance_agent.run_graph_audit(
-            transaction_data=raw_data,
-            hydrated_metrics=hydrated_metrics,
-            shap_payload=shap_payload
-        )
+def _compile_and_store_audit(raw_data: dict, raw_features: list, hydrated_metrics: dict, compliance_agent, explainer_bridge):
+    """Run blocking audit compilation inside a worker thread."""
+    feature_order = ['amount_paise', 'card_vel_10m', 'device_card_ratio_30m']
+    input_df = pd.DataFrame([raw_features], columns=feature_order)
+    shap_json_str = explainer_bridge.generate_explanation(input_df)
+    shap_payload = json.loads(shap_json_str)
+    tx_id = raw_data.get("transaction_id", "UNKNOWN-TX")
 
-        with open(settings.LOG_FILE_PATH, "a", encoding="utf-8") as log_file:
-            log_file.write(f"\n{final_signed_memo}\n")
-            
-        print("[Background Thread] Signed compliance log successfully written to disk storage.")
+    final_signed_memo = compliance_agent.run_graph_audit(
+        transaction_data=raw_data,
+        hydrated_metrics=hydrated_metrics,
+        shap_payload=shap_payload
+    )
+
+    formatted_entry = (
+        f"\nAUDIT SYSTEM ID: {tx_id}\n"
+        f"{final_signed_memo}\n\n"
+    )
+    with open(settings.LOG_FILE_PATH, "a", encoding="utf-8") as log_file:
+        log_file.write(formatted_entry)
+    return tx_id
+
+
+async def process_agent_audit_worker(raw_data: dict, raw_features: list, hydrated_metrics: dict, compliance_agent, explainer_bridge):
+    try:
+        tx_id = await asyncio.to_thread(
+            _compile_and_store_audit,
+            raw_data,
+            raw_features,
+            hydrated_metrics,
+            compliance_agent,
+            explainer_bridge,
+        )
+        print(f"[Background Thread] Signed compliance logs for Tx: {tx_id} written to disk.")
+        await ws_manager.broadcast_event({
+            "type": "AUDIT_COMPLETE",
+            "data": {
+                "id": tx_id,
+                "transaction_id": tx_id,
+                "status": "complete"
+            }
+        })
     except Exception as err:
         print(f"[Background Thread Error] Task execution aborted: {str(err)}")
-
+        tx_id = raw_data.get("transaction_id", "UNKNOWN-TX")
+        await ws_manager.broadcast_event({
+            "type": "AUDIT_FAILED",
+            "data": {
+                "id": tx_id,
+                "transaction_id": tx_id,
+                "status": "failed"
+            }
+        })
 
 async def evaluate_and_persist_transaction(
         payload, background_tasks, 
@@ -53,6 +76,7 @@ async def evaluate_and_persist_transaction(
     """
     current_time = datetime.now()
     timestamp_now_str = current_time.isoformat()
+    tx_id = payload.transaction_id if payload.transaction_id else str(uuid.uuid4())
 
     card_id = payload.card_id
     device_id = payload.device_id
@@ -116,12 +140,12 @@ async def evaluate_and_persist_transaction(
     with db.connection() as conn:
         conn.execute("""
             INSERT INTO transactions_ledger (
-                card_id, device_id, merchant_id, timestamp, 
-                amount_paise, ensemble_risk_score, is_blocked, 
+                transaction_id, card_id, device_id, merchant_id, timestamp,
+                amount_paise, ensemble_risk_score, is_blocked,
                 hydrated_metrics, shap_payload
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         """, (
-            card_id, device_id, merchant, timestamp_now_str,
+            tx_id, card_id, device_id, merchant, timestamp_now_str,
             payload.amount_paise, ensemble_prob, 1 if is_blocked else 0,
             json.dumps(hydrated_metrics), json.dumps(shap_payload)
         ))
@@ -133,6 +157,7 @@ async def evaluate_and_persist_transaction(
             )
 
     response_data = {
+        "transaction_id": tx_id,
         "is_blocked": is_blocked,
         "ensemble_risk_score": round(ensemble_prob, 4),
         "hydrated_metrics": hydrated_metrics,
@@ -144,6 +169,7 @@ async def evaluate_and_persist_transaction(
     await ws_manager.broadcast_event({
         "type": "TRANSACTION_STREAM",
         "data": {
+            "transaction_id": tx_id,
             "card_id": card_id, "device_id": device_id, "merchant_id": merchant,
             "timestamp": timestamp_now_str, "amount_paise": payload.amount_paise,
             "ensemble_risk_score": response_data["ensemble_risk_score"],
@@ -152,10 +178,13 @@ async def evaluate_and_persist_transaction(
     })
 
     if is_blocked:
+        payload_dict = payload.model_dump()
+        payload_dict["transaction_id"] = tx_id
+
         background_tasks.add_task(
             process_agent_audit_worker, 
-            payload.model_dump(), 
-            raw_features, 
+            payload_dict,
+            raw_features,
             hydrated_metrics,
             compliance_agent,
             explainer_bridge

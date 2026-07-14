@@ -25,7 +25,7 @@ function HashField({ label, value }) {
 }
 
 export default function ComplianceVault() {
-  const { audits, loading, dataError, refreshAudits, auditSearch, setAuditSearch, selectedAuditId, setSelectedAuditId, blockedTransactions } = useApp();
+  const { audits, auditStatuses, loading, dataError, refreshAudits, auditSearch, setAuditSearch, selectedAuditId, setSelectedAuditId } = useApp();
   const [refreshing, setRefreshing] = useState(false);
 
   const filtered = useMemo(() => {
@@ -48,11 +48,11 @@ export default function ComplianceVault() {
     try { await refreshAudits(); } finally { setRefreshing(false); }
   };
 
-  const pendingCount = Math.max(0, blockedTransactions.length - audits.length);
+  const pendingCount = Object.values(auditStatuses).filter((state) => state.status === 'processing' || state.status === 'delayed').length;
 
   return (
     <div className="page-stack">
-      <section className="vault-summary"><div><span className="summary-icon summary-icon--success"><ShieldCheck size={20} /></span><div><strong>{audits.length} compliance records</strong><p>Chain-linked reports currently available from the backend audit ledger.</p></div></div><div className="vault-actions">{pendingCount > 0 && <Badge tone="warning">Up to {pendingCount} pending</Badge>}<button className="button button--secondary" onClick={refresh} disabled={refreshing}><RefreshCw size={15} className={refreshing ? 'spin' : ''} />Refresh records</button></div></section>
+      <section className="vault-summary"><div><span className="summary-icon summary-icon--success"><ShieldCheck size={20} /></span><div><strong>{audits.length} compliance records</strong><p>Chain-linked reports update automatically when background compilation completes.</p></div></div><div className="vault-actions">{pendingCount > 0 ? <Badge tone="warning">{pendingCount} processing</Badge> : <Badge tone="success">Live updates</Badge>}<button className="button button--secondary" onClick={refresh} disabled={refreshing}><RefreshCw size={15} className={refreshing ? 'spin' : ''} />Refresh records</button></div></section>
 
       {dataError && <div className="inline-alert" role="alert"><AlertTriangle size={17} /><div><strong>Vault synchronization issue</strong><p>{dataError}</p></div></div>}
 
@@ -64,7 +64,7 @@ export default function ComplianceVault() {
           </div>
         </Panel>
 
-        <Panel className="vault-document">
+        <Panel className="vault-document" aria-live="polite">
           {!selected ? <EmptyState title="Select a compliance record" message="Choose a record from the index to review its memorandum and chain metadata." /> : selected.is_error ? <div className="audit-error-state"><AlertTriangle size={26} /><span className="eyebrow">Report generation issue</span><h2>The risk decision is retained, but the memorandum was not completed.</h2><p>{selected.report_text}</p><button className="button button--secondary" onClick={refresh}>Check for newer records</button></div> : <article className="audit-document"><header><div><span className="eyebrow">Compliance memorandum</span><h2>Incident review record</h2></div><Badge tone="success">Chain-linked</Badge></header><div className="document-meta"><div><span>Target card</span><strong className="mono">{selected.card_id}</strong></div><div><span>Record time</span><strong className="mono">{selected.timestamp}</strong></div><div><span>Record ID</span><strong className="mono">#{selected.id}</strong></div></div><div className="markdown-report"><ReactMarkdown>{enhancedReport(selected.report_text)}</ReactMarkdown></div></article>}
         </Panel>
 

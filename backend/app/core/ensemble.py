@@ -5,7 +5,7 @@ resulting ensemble (soft voting) is then used to tune the
 threshold to reduce false  negatives and hence increase recall.
 """
 import numpy as np
-from core.trainer import FraudModelTrainer
+from app.core.trainer import FraudModelTrainer
 import pandas as pd
 from xgboost import XGBClassifier
 import lightgbm as lgb
@@ -64,5 +64,4 @@ if __name__ == "__main__":
     final_preds = (ens_probs >= threshold).astype(int)
     print("\nOut-Of-Sample Calibrated Classification Matrix:")
     print(classification_report(trainer.y_test, final_preds, target_names=["Majority (0)", "Minority (1)"]))
-
 
