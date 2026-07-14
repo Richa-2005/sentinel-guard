@@ -43,7 +43,8 @@ def startup_event():
     explainer_bridge = TransactionExplainer(xgb_path,lgb_path)
     compliance_agent = ComplianceAgent()
     db = SentinelDatabase()
-    print("System layers activated.")
+    db.initialize()
+    print("System layers activated and database initialized.")
 
 
 def process_agent_audit_worker(raw_data: dict, raw_features: list, hydrated_metrics : dict):
@@ -88,7 +89,6 @@ async def evaluate_transaction(payload: TransactionPayload, background_tasks: Ba
         merchant = payload.merchant_id
 
         with db.connection() as conn:
-
             last_10m = (current_time - timedelta(minutes=10)).isoformat()
             last_30m = (current_time - timedelta(minutes=30)).isoformat()
             last_24h = (current_time - timedelta(hours=24)).isoformat()
@@ -128,28 +128,6 @@ async def evaluate_transaction(payload: TransactionPayload, background_tasks: Ba
 
             is_known_merchant = 1.0 if row_merchant["cnt"] >= 1 else 0.0
 
-
-            #Inserting the new data
-            conn.execute(
-                """
-                INSERT INTO transactions_ledger (card_id, device_id, merchant_id, timestamp) 
-                VALUES (?, ?, ?, ?);
-                """,
-                (card_id, device_id, merchant, timestamp_now_str)
-            )
-            print(conn.execute("SELECT * FROM transactions_ledger"))
-            
-            if is_known_merchant == 0.0:
-                conn.execute(
-                    """
-                    INSERT OR IGNORE INTO merchant_history (card_id, merchant_id) 
-                    VALUES (?, ?);
-                    """,
-                    (card_id, merchant)
-                )
-                print(conn.execute("SELECT * FROM merchant_history"))
-            
-
         raw_features = [
             float(payload.amount_paise),
             card_vel_10m,
@@ -178,11 +156,45 @@ async def evaluate_transaction(payload: TransactionPayload, background_tasks: Ba
                 "is_off_hours_window":is_off_hours_window
         }
 
+        # Calculate SHAP explainability values synchronously
+        feature_order = ['amount_paise', 'card_vel_10m', 'device_card_ratio_30m']
+        input_df = pd.DataFrame([raw_features], columns=feature_order)
+        shap_json_str = explainer_bridge.generate_explanation(input_df)
+        shap_payload = json.loads(shap_json_str)
+
+        # Inserting the COMPLETE transaction evaluation into SQLite transactions_ledger
+        with db.connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO transactions_ledger (
+                    card_id, device_id, merchant_id, timestamp, 
+                    amount_paise, ensemble_risk_score, is_blocked, 
+                    hydrated_metrics, shap_payload
+                ) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+                """,
+                (
+                    card_id, device_id, merchant, timestamp_now_str,
+                    payload.amount_paise, ensemble_prob, 1 if is_blocked else 0,
+                    json.dumps(hydrated_metrics), json.dumps(shap_payload)
+                )
+            )
+            
+            if is_known_merchant == 0.0:
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO merchant_history (card_id, merchant_id) 
+                    VALUES (?, ?);
+                    """,
+                    (card_id, merchant)
+                )
+
         response_data = {
-           "is_blocked": is_blocked,
+            "is_blocked": is_blocked,
             "ensemble_risk_score": round(ensemble_prob, 4),
-            "hydrated_metrics":hydrated_metrics,
-            "status" : "evaluated"
+            "hydrated_metrics": hydrated_metrics,
+            "shap_payload": shap_payload,
+            "status": "evaluated"
         }
 
         if is_blocked:
@@ -201,6 +213,134 @@ async def evaluate_transaction(payload: TransactionPayload, background_tasks: Ba
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal Risk Core Exception: {str(e)}")
+
+
+@app.get("/api/v1/transactions")
+def get_transactions():
+    """Retrieve full historical logs out of SQLite storage layer for UI component bootstrapping."""
+    try:
+        with db.connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM transactions_ledger ORDER BY timestamp DESC LIMIT 200"
+            ).fetchall()
+            
+            result = []
+            for r in rows:
+                try:
+                    hydrated = json.loads(r["hydrated_metrics"]) if r["hydrated_metrics"] else {}
+                except Exception:
+                    hydrated = {}
+                try:
+                    shap = json.loads(r["shap_payload"]) if r["shap_payload"] else {}
+                except Exception:
+                    shap = {}
+                
+                result.append({
+                    "card_id": r["card_id"],
+                    "device_id": r["device_id"],
+                    "merchant_id": r["merchant_id"],
+                    "timestamp": r["timestamp"],
+                    "amount_paise": r["amount_paise"] or 0,
+                    "ensemble_risk_score": r["ensemble_risk_score"] or 0.0,
+                    "is_blocked": bool(r["is_blocked"]),
+                    "hydrated_metrics": hydrated,
+                    "shap_payload": shap
+                })
+            return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve transactions: {str(e)}")
+
+
+@app.get("/api/v1/merchants")
+def get_merchants():
+    """Expose the MCC codes registry dynamic dictionary."""
+    try:
+        from core.agent import kb_manager
+        return kb_manager.mcc_registry
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch merchant registry: {str(e)}")
+
+
+@app.get("/api/v1/audits")
+def get_audits():
+    """Read compliance_audit.log and split/parse it into separate entries for UI rendering."""
+    try:
+        if not LOG_FILE_PATH.exists():
+            return []
+        
+        with open(LOG_FILE_PATH, "r", encoding="utf-8") as f:
+            log_contents = f.read()
+
+        # Split log file into individual entries
+        raw_lines = log_contents.splitlines()
+        entries = []
+        current_entry = []
+
+        for line in raw_lines:
+            is_start = False
+            if line.startswith("AUDIT ENTRY ["):
+                is_start = True
+            elif "NEXUS FINTECH COMPLIANCE INCIDENT REPORT" in line:
+                is_start = True
+            elif line.startswith("LLM Generation Connection Timeout Error:"):
+                is_start = True
+
+            if is_start and current_entry:
+                entries.append("\n".join(current_entry).strip())
+                current_entry = []
+
+            current_entry.append(line)
+
+        if current_entry:
+            entries.append("\n".join(current_entry).strip())
+
+        import re
+        parsed_entries = []
+        for i, entry_text in enumerate(entries):
+            if not entry_text.strip():
+                continue
+
+            # Extract Card ID
+            card_match = re.search(r"Card\s+ID\s*:\s*\*?\*?([a-zA-Z0-9_\-]+)", entry_text, re.IGNORECASE)
+            card_id = card_match.group(1).strip() if card_match else "unknown"
+
+            # Extract Timestamp
+            time_match = re.search(r"AUDIT ENTRY\s*\[([^\]]+)\]", entry_text, re.IGNORECASE)
+            timestamp = time_match.group(1).strip() if time_match else None
+            
+            # If timestamp is not in the header, look for other markers
+            if not timestamp:
+                dt_match = re.search(r"\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]", entry_text)
+                if dt_match:
+                    timestamp = dt_match.group(0)[1:-1]
+                else:
+                    # Look for date/time patterns
+                    dt_match2 = re.search(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", entry_text)
+                    timestamp = dt_match2.group(0) if dt_match2 else "Historical Entry"
+
+            # Extract Cryptographic hashes
+            prev_hash_match = re.search(r"PREVIOUS_ENTRY_HASH\s*:\s*([a-fA-F0-9]+)", entry_text, re.IGNORECASE)
+            curr_hash_match = re.search(r"CURRENT_RECORD_HASH\s*:\s*([a-fA-F0-9]+)", entry_text, re.IGNORECASE)
+
+            prev_hash = prev_hash_match.group(1).strip() if prev_hash_match else None
+            curr_hash = curr_hash_match.group(1).strip() if curr_hash_match else None
+
+            is_error = "Connection Timeout Error" in entry_text or "Generation Failed" in entry_text
+
+            parsed_entries.append({
+                "id": i + 1,
+                "card_id": card_id,
+                "timestamp": timestamp,
+                "previous_hash": prev_hash,
+                "current_hash": curr_hash,
+                "report_text": entry_text,
+                "is_error": is_error
+            })
+
+        # Return newest first
+        return parsed_entries[::-1]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch audit logs: {str(e)}")
 
 
 @app.get("/api/v1/debug-fraud-sample")

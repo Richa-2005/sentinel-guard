@@ -1,5 +1,5 @@
 """
-Generating / Synthesisng the artificial data to train the model on. 
+Generating / Synthesising the artificial data to train the model on. 
 The actual financial records , requests contain private keys and identification hence 
 cannot be used to train. companines like Stripe, PayPal etc. also synthesise data
 which replicates the real world data immensely. 
