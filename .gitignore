@@ -1,35 +1,126 @@
-# Virtual Environments
+# -----------------------------------------------------------------------------
+# Sentinel Guard repository boundaries
+# Keep source, dependency manifests, tests, and non-secret *.example templates.
+# Keep credentials, local ledgers, generated artifacts, and machine state local.
+# -----------------------------------------------------------------------------
+
+# Operating-system and editor metadata
+.DS_Store
+**/.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Local agent and workspace state
+.codex/
+.agents/
+
+# Environment variables and secrets
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+!**/.env.test.example
+*.secret
+*.secrets
+*credentials*.json
+*service-account*.json
+
+# Private keys, certificates, signing stores, and SSH material
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa*
+id_ed25519*
+
+# Python virtual environments
 venv/
 .venv/
 env/
+.envdir/
+**/venv/
+**/.venv/
+**/env/
 
-# Python Bytecode and Caches
+# Python bytecode, test, type-check, and tooling caches
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+**/__pycache__/
+*.py[cod]
+*$py.class
 .pytest_cache/
-.pypy/
+**/.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pytype/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
 
-# Environmental Secret Keys
-.env
-.env.local
+# Node dependencies, generated bundles, and frontend tooling caches
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+build/
+**/build/
+coverage/
+**/coverage/
+.vite/
+**/.vite/
+.turbo/
+.parcel-cache/
+.cache/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
-# Local Data and Logs
-backend/data/*.csv
-backend/data/*.db
-backend/data/*.log
+# Backend runtime data and generated ML/compliance artifacts
+# This directory contains transaction records, SQLite state, WAL files, audit
+# reports, model binaries, generated datasets, and local compliance material.
+backend/data/
+backend/app/data/
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.log
 
-backend/data/*.json
-backend/data/*.txt
+# Local reports and performance output
+lighthouse-report*.html
+lighthouse-report*.json
+playwright-report/
+test-results/
+*.lcov
 
-!data/transactions.csv
-backend/data/lgb_compliance_gate.txt
-backend/data/xgb_compliance_gate.json
-backend/data/corporate_policy.txt
-backend/data/network_tos.txt
-backend/data/rbi_circular.txt
+# Temporary, backup, and patch files
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+*.backup
+*.orig
+*.rej
 
-.DS_Store
-
-backend/app/data
+# Local design brief; intentionally excluded from the public repository
+Instructions.md
