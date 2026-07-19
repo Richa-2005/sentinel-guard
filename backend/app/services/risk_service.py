@@ -13,7 +13,14 @@ db = SentinelDatabase()
 
 def _compile_and_store_audit(raw_data: dict, raw_features: list, hydrated_metrics: dict, compliance_agent, explainer_bridge):
     """Run blocking audit compilation inside a worker thread."""
-    feature_order = ['amount_paise', 'card_vel_10m', 'device_card_ratio_30m']
+    feature_order = [
+        'amount_paise',
+        'card_vel_10m',
+        'device_card_ratio_30m',
+        'device_card_limit_crossed',
+        'is_known_merchant',
+        'is_off_hours_window',
+    ]
     input_df = pd.DataFrame([raw_features], columns=feature_order)
     shap_json_str = explainer_bridge.generate_explanation(input_df)
     shap_payload = json.loads(shap_json_str)
@@ -115,8 +122,15 @@ async def evaluate_and_persist_transaction(
         ).fetchone()
         is_known_merchant = 1.0 if row_merchant["cnt"] >= 1 else 0.0
 
-    raw_features = [float(payload.amount_paise), card_vel_10m, device_card_ratio_30m]
     is_off_hours_window = 1.0 if (1 <= current_time.hour <= 5) else 0.0
+    raw_features = [
+        float(payload.amount_paise),
+        card_vel_10m,
+        device_card_ratio_30m,
+        device_card_limit,
+        is_known_merchant,
+        is_off_hours_window,
+    ]
     input_matrix = [raw_features]
 
     # Execute heavy math transformations inside non-blocking threads

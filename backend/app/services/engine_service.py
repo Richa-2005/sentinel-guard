@@ -11,14 +11,22 @@ def compute_ml_and_shap(raw_features, input_matrix, ensemble_gate, explainer_bri
     Synchronous compute block wrapping tree evaluations and mathematical SHAP weights.
     Runs completely outside the main FastAPI event loop thread.
     """
-    # 1. Execute dual tree scoring branch predictions
-    p_xgb = float(ensemble_gate.xgb.predict_proba(input_matrix)[:, 1][0])
-    p_lgb = float(ensemble_gate.lgb.predict(input_matrix)[0])
+    feature_order = [
+        'amount_paise',
+        'card_vel_10m',
+        'device_card_ratio_30m',
+        'device_card_limit_crossed',
+        'is_known_merchant',
+        'is_off_hours_window',
+    ]
+    input_df = pd.DataFrame([raw_features], columns=feature_order)
+
+    # Execute dual tree scoring branch predictions
+    p_xgb = float(ensemble_gate.xgb.predict_proba(input_df)[:, 1][0])
+    p_lgb = float(ensemble_gate.lgb.predict(input_df)[0])
     ensemble_prob = (p_xgb + p_lgb) / 2
     
-    # 2. Execute intense mathematical SHAP vectors
-    feature_order = ['amount_paise', 'card_vel_10m', 'device_card_ratio_30m']
-    input_df = pd.DataFrame([raw_features], columns=feature_order)
+    #Execute intense mathematical SHAP vectors
     shap_json_str = explainer_bridge.generate_explanation(input_df)
     shap_payload = json.loads(shap_json_str)
     

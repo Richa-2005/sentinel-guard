@@ -29,7 +29,14 @@ class FraudModelTrainer:
         features_data = self.profiler.data
 
         y = features_data["is_fraud"]
-        X = features_data[['amount_paise', 'card_vel_10m', 'device_card_ratio_30m']]
+        X = features_data[[
+            'amount_paise', 
+            'card_vel_10m', 
+            'device_card_ratio_30m', 
+            'device_card_limit_crossed', 
+            'is_known_merchant', 
+            'is_off_hours_window'
+        ]]
         
         r = (int)(len(features_data) * 0.8)
         self.X_train = X[:r]
@@ -79,7 +86,7 @@ class FraudModelTrainer:
                         )
                         clf.fit(X_tr, y_tr, verbose=False)
                         
-                        # We evaluate optimizations using PR-AUC since the target distribution is highly skewed
+                        # evaluate optimizations using PR-AUC since the target distribution is highly skewed
                         val_probs = clf.predict_proba(X_val)[:, 1]
                         prec, rec, _ = precision_recall_curve(y_val, val_probs)
                         cv_scores.append(auc(rec, prec))
