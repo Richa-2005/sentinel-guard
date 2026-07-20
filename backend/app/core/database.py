@@ -14,14 +14,15 @@ DEFAULT_DATABASE_PATH = BACKEND_DIR / "data" / "sentinel_storage.db"
 SCHEMA_STATEMENTS: tuple[str, ...] = (
     """
     CREATE TABLE IF NOT EXISTS transactions_ledger (
-        transaction_id TEXT UNIQUE,
+        transaction_id TEXT PRIMARY KEY NOT NULL,
         card_id TEXT NOT NULL,
         device_id TEXT NOT NULL,
         merchant_id TEXT NOT NULL,
         timestamp TEXT NOT NULL,
-        amount_paise INTEGER,
-        ensemble_risk_score REAL,
-        is_blocked INTEGER,
+        amount_paise INTEGER NOT NULL CHECK (amount_paise >= 0),
+        ensemble_risk_score REAL NOT NULL
+            CHECK (ensemble_risk_score >= 0 AND ensemble_risk_score <= 1),
+        is_blocked INTEGER NOT NULL CHECK (is_blocked IN (0, 1)),
         hydrated_metrics TEXT,
         shap_payload TEXT
     );
@@ -33,11 +34,80 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
         PRIMARY KEY (card_id, merchant_id)
     );
     """,
+    """
+    CREATE TABLE IF NOT EXISTS audit_vault (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        transaction_id TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        compliance_memo TEXT NOT NULL,
+        created_at TEXT NOT NULL
+            DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        previous_hash TEXT NOT NULL
+            CHECK (length(previous_hash) = 64),
+        current_hash TEXT NOT NULL UNIQUE
+            CHECK (length(current_hash) = 64),
+
+        UNIQUE (transaction_id, event_type),
+
+        FOREIGN KEY (transaction_id)
+            REFERENCES transactions_ledger(transaction_id)
+            ON UPDATE RESTRICT
+            ON DELETE RESTRICT
+    );
+    """,
     # Composite index for lightning-fast card velocity window lookups
     "CREATE INDEX IF NOT EXISTS idx_ledger_card_time ON transactions_ledger(card_id, timestamp);",
     
     # Composite index for high-performance fraud ring device tracking loops
-    "CREATE INDEX IF NOT EXISTS idx_ledger_device_time ON transactions_ledger(device_id, timestamp);"
+    "CREATE INDEX IF NOT EXISTS idx_ledger_device_time ON transactions_ledger(device_id, timestamp);",
+
+    # Make the audit table append-only by blocking updates and deletes.
+    """
+    CREATE TRIGGER IF NOT EXISTS prevent_audit_vault_update
+    BEFORE UPDATE ON audit_vault
+    BEGIN
+        SELECT RAISE(
+            ABORT,
+            'audit_vault records are immutable and cannot be updated'
+        );
+    END;
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS prevent_audit_vault_delete
+    BEFORE DELETE ON audit_vault
+    BEGIN
+        SELECT RAISE(
+            ABORT,
+            'audit_vault records are immutable and cannot be deleted'
+        );
+    END;
+    """,
+
+    """
+    CREATE TABLE IF NOT EXISTS audit_jobs (
+        transaction_id TEXT PRIMARY KEY NOT NULL,
+        status TEXT NOT NULL DEFAULT 'PENDING'
+            CHECK (status IN ('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED')),
+        attempts INTEGER NOT NULL DEFAULT 0
+            CHECK (attempts >= 0),
+        created_at TEXT NOT NULL
+            DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        started_at TEXT,
+        completed_at TEXT,
+        last_error TEXT,
+        next_attempt_at TEXT NOT NULL
+            DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+
+        FOREIGN KEY (transaction_id)
+            REFERENCES transactions_ledger(transaction_id)
+            ON UPDATE RESTRICT
+            ON DELETE RESTRICT
+    );
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_audit_jobs_ready
+    ON audit_jobs(status, next_attempt_at);
+    """
 )
 
 
@@ -80,96 +150,9 @@ class SentinelDatabase:
 
     def initialize(self, schema: Iterable[str] = SCHEMA_STATEMENTS) -> None:
         """Create the database file and apply all supplied schema statements."""
-        import json
-        import random
         with self.connection() as connection:
             for statement in schema:
                 connection.execute(statement)
-
-            # Check if columns exist, if not alter the table
-            cursor = connection.execute("PRAGMA table_info(transactions_ledger);")
-            columns = [row["name"] for row in cursor.fetchall()]
-
-            if "transaction_id" not in columns:
-                connection.execute("ALTER TABLE transactions_ledger ADD COLUMN transaction_id TEXT;")
-            if "amount_paise" not in columns:
-                connection.execute("ALTER TABLE transactions_ledger ADD COLUMN amount_paise INTEGER;")
-            if "ensemble_risk_score" not in columns:
-                connection.execute("ALTER TABLE transactions_ledger ADD COLUMN ensemble_risk_score REAL;")
-            if "is_blocked" not in columns:
-                connection.execute("ALTER TABLE transactions_ledger ADD COLUMN is_blocked INTEGER;")
-            if "hydrated_metrics" not in columns:
-                connection.execute("ALTER TABLE transactions_ledger ADD COLUMN hydrated_metrics TEXT;")
-            if "shap_payload" not in columns:
-                connection.execute("ALTER TABLE transactions_ledger ADD COLUMN shap_payload TEXT;")
-
-            # Stable IDs make HTTP responses, WebSocket events, and audits reconcilable.
-            connection.execute(
-                """
-                UPDATE transactions_ledger
-                SET transaction_id = 'legacy-' || rowid
-                WHERE transaction_id IS NULL OR transaction_id = '';
-                """
-            )
-            connection.execute(
-                """
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_ledger_transaction_id
-                ON transactions_ledger(transaction_id);
-                """
-            )
-
-            # Backfill existing transaction ledger records that have NULL values
-            rows_to_backfill = connection.execute(
-                "SELECT rowid, card_id, timestamp FROM transactions_ledger WHERE amount_paise IS NULL"
-            ).fetchall()
-
-            if rows_to_backfill:
-                print(f"[Database Migration] Backfilling {len(rows_to_backfill)} historical records...")
-                for r in rows_to_backfill:
-                    # Realistic baseline data
-                    amt = random.randint(1500, 450000)
-                    # Decide if blocked
-                    score = random.uniform(0.001, 0.45)
-                    # Force some to be high risk
-                    if r["card_id"] in ["card_token_999", "attack_card_330", "attack_card_964"]:
-                        score = random.uniform(0.015, 0.35)
-                    is_blocked = 1 if score >= 0.01 else 0
-                    
-                    metrics = {
-                        "card_vel_10m": random.randint(1, 4),
-                        "device_card_ratio_30m": round(random.uniform(0.33, 1.5), 4),
-                        "device_card_limit_crossed": 1.0 if random.random() > 0.8 else 0.0,
-                        "is_known_merchant": 1.0 if random.random() > 0.4 else 0.0,
-                        "is_off_hours_window": 1.0 if random.random() > 0.85 else 0.0
-                    }
-                    shap = {
-                        "xgb_feature_impacts": {
-                            "amount_paise": round(random.uniform(-0.1, 0.35), 4),
-                            "card_vel_10m": round(random.uniform(-0.05, 0.8), 4),
-                            "device_card_ratio_30m": round(random.uniform(-0.2, 0.2), 4)
-                        },
-                        "lgb_feature_impacts": {
-                            "amount_paise": round(random.uniform(-0.1, 0.35), 4),
-                            "card_vel_10m": round(random.uniform(-0.05, 0.8), 4),
-                            "device_card_ratio_30m": round(random.uniform(-0.2, 0.2), 4)
-                        },
-                        "ensemble_feature_impacts": {}
-                    }
-                    # Compute ensemble average
-                    for key in shap["xgb_feature_impacts"]:
-                        shap["ensemble_feature_impacts"][key] = round(
-                            (shap["xgb_feature_impacts"][key] + shap["lgb_feature_impacts"][key]) / 2, 4
-                        )
-
-                    connection.execute(
-                        """
-                        UPDATE transactions_ledger 
-                        SET amount_paise = ?, ensemble_risk_score = ?, is_blocked = ?, hydrated_metrics = ?, shap_payload = ?
-                        WHERE rowid = ?;
-                        """,
-                        (amt, score, is_blocked, json.dumps(metrics), json.dumps(shap), r["rowid"])
-                    )
-                print("[Database Migration] Backfilling completed successfully.")
 
 
 def initialize_database(

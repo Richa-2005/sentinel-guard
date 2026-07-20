@@ -82,6 +82,16 @@ describe('useWebSocketStream', () => {
       transaction_id: 'tx-1',
       status: 'complete',
     }));
+
+    act(() => socket.receive({
+      type: 'AUDIT_RETRY_SCHEDULED',
+      data: { transaction_id: 'tx-2', attempts: 1 },
+    }));
+    expect(onAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
+      transaction_id: 'tx-2',
+      status: 'processing',
+      attempts: 1,
+    }));
   });
 
   it('ignores malformed messages without terminating the channel', () => {

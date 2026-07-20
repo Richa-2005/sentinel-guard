@@ -56,6 +56,7 @@ export function evaluateTransaction(payload, options = {}) {
 
 export const fetchTransactions = (options) => request(`${API_BASE}/transactions`, options);
 export const fetchAudits = (options) => request(`${API_BASE}/audits`, options);
+export const fetchAuditJobs = (options) => request(`${API_BASE}/audit-jobs`, options);
 export const fetchMerchants = (options) => request(`${API_BASE}/merchants`, options);
 
 export async function pingBackend(options = {}) {

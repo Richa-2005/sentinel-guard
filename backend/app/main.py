@@ -11,8 +11,17 @@ from app.core.agent import ComplianceAgent
 
 # Modular Custom Business Logic Services
 from app.services.websocket_service import ws_manager
-from app.services.risk_service import db, evaluate_and_persist_transaction
-from app.services.log_service import parse_compliance_vault_logs
+from app.services.risk_service import (
+    audit_job_dispatcher,
+    audit_service,
+    db,
+    evaluate_and_persist_transaction,
+)
+
+from app.services.log_service import fetch_audit_jobs, fetch_compliance_audits
+
+import asyncio
+from contextlib import suppress
 
 app = FastAPI(
     title="Sentinel Guard: Agentic FinTech Risk & Compliance Engine",
@@ -23,20 +32,58 @@ app = FastAPI(
 ensemble_gate = None
 explainer_bridge = None
 compliance_agent = None
+audit_dispatcher_task = None
 
 
-@app.on_event("startup") 
-def startup_event():
-    global ensemble_gate, explainer_bridge, compliance_agent
+@app.on_event("startup")
+async def startup_event():
+    global ensemble_gate
+    global explainer_bridge
+    global compliance_agent
+    global audit_dispatcher_task
+
     xgb_path = settings.DATA_DIR / "xgb_compliance_gate.json"
     lgb_path = settings.DATA_DIR / "lgb_compliance_gate.txt"
 
     ensemble_gate = FinancialEnsembleGate(xgb_path, lgb_path)
     explainer_bridge = TransactionExplainer(xgb_path, lgb_path)
     compliance_agent = ComplianceAgent()
+
     db.initialize()
+
+    recovered_jobs = await asyncio.to_thread(
+        audit_service.recover_interrupted_jobs
+    )
+
+    if recovered_jobs:
+        print(
+            f"[Audit Recovery] Requeued {recovered_jobs} "
+            "interrupted audit jobs."
+        )
+
+    audit_dispatcher_task = asyncio.create_task(
+        audit_job_dispatcher(
+            compliance_agent,
+            audit_service,
+        )
+    )
+
     print("Clean Gateway Architecture activated successfully.")
 
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    global audit_dispatcher_task
+
+    if audit_dispatcher_task is None:
+        return
+
+    audit_dispatcher_task.cancel()
+
+    with suppress(asyncio.CancelledError):
+        await audit_dispatcher_task
+
+    audit_dispatcher_task = None
 
 @app.websocket("/ws/live-feed")
 async def websocket_endpoint(websocket: WebSocket):
@@ -90,8 +137,14 @@ def get_merchants():
 
 @app.get("/api/v1/audits")
 def get_audits():
-    """Parses text chunks directly into clean JSON nodes for frontend consumption."""
-    return parse_compliance_vault_logs(db)
+    """Return persisted compliance audits."""
+    return fetch_compliance_audits(db)
+
+
+@app.get("/api/v1/audit-jobs")
+def get_audit_jobs():
+    """Return durable audit generation and retry statuses."""
+    return fetch_audit_jobs(db)
 
 
 @app.get("/api/v1/debug-fraud-sample")

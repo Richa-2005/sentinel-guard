@@ -1,76 +1,134 @@
 import asyncio
 import json
 import uuid
-import pandas as pd
 from datetime import datetime, timedelta
-from app.config import settings
+from app.services.audit_service import AuditVaultService
 from app.core.config import SystemRiskConfig
 from app.core.database import SentinelDatabase
 from app.services.engine_service import ml_executor, compute_ml_and_shap
 from app.services.websocket_service import ws_manager
 
 db = SentinelDatabase()
+audit_service = AuditVaultService(db)
 
-def _compile_and_store_audit(raw_data: dict, raw_features: list, hydrated_metrics: dict, compliance_agent, explainer_bridge):
-    """Run blocking audit compilation inside a worker thread."""
-    feature_order = [
-        'amount_paise',
-        'card_vel_10m',
-        'device_card_ratio_30m',
-        'device_card_limit_crossed',
-        'is_known_merchant',
-        'is_off_hours_window',
-    ]
-    input_df = pd.DataFrame([raw_features], columns=feature_order)
-    shap_json_str = explainer_bridge.generate_explanation(input_df)
-    shap_payload = json.loads(shap_json_str)
-    tx_id = raw_data.get("transaction_id", "UNKNOWN-TX")
+async def _broadcast_safely(event: dict) -> None:
+    """Broadcast without changing persisted audit state on socket failure."""
+    try:
+        await ws_manager.broadcast_event(event)
+    except Exception as error:
+        print(f"[WebSocket Warning] Broadcast failed: {error}")
 
-    final_signed_memo = compliance_agent.run_graph_audit(
+def _compile_and_store_audit(
+    transaction_id: str,
+    compliance_agent,
+    audit_service: AuditVaultService,
+) -> dict[str, object]:
+    """Load, generate, hash, and persist one compliance audit."""
+    raw_data, hydrated_metrics, shap_payload = (
+        audit_service.load_job_context(transaction_id)
+    )
+
+    final_memo = compliance_agent.run_graph_audit(
         transaction_data=raw_data,
         hydrated_metrics=hydrated_metrics,
-        shap_payload=shap_payload
+        shap_payload=shap_payload,
     )
 
-    formatted_entry = (
-        f"\nAUDIT SYSTEM ID: {tx_id}\n"
-        f"{final_signed_memo}\n\n"
+    return audit_service.append_audit(
+        transaction_id=transaction_id,
+        event_type="BLOCKED_TRANSACTION_AUDIT",
+        compliance_memo=final_memo,
     )
-    with open(settings.LOG_FILE_PATH, "a", encoding="utf-8") as log_file:
-        log_file.write(formatted_entry)
-    return tx_id
 
-
-async def process_agent_audit_worker(raw_data: dict, raw_features: list, hydrated_metrics: dict, compliance_agent, explainer_bridge):
+async def process_agent_audit_worker(
+    transaction_id: str,
+    compliance_agent,
+    audit_service: AuditVaultService,
+) -> None:
     try:
-        tx_id = await asyncio.to_thread(
-            _compile_and_store_audit,
-            raw_data,
-            raw_features,
-            hydrated_metrics,
-            compliance_agent,
-            explainer_bridge,
+        claimed = await asyncio.to_thread(
+            audit_service.claim_job,
+            transaction_id,
         )
-        print(f"[Background Thread] Signed compliance logs for Tx: {tx_id} written to disk.")
-        await ws_manager.broadcast_event({
-            "type": "AUDIT_COMPLETE",
-            "data": {
-                "id": tx_id,
-                "transaction_id": tx_id,
-                "status": "complete"
-            }
-        })
-    except Exception as err:
-        print(f"[Background Thread Error] Task execution aborted: {str(err)}")
-        tx_id = raw_data.get("transaction_id", "UNKNOWN-TX")
-        await ws_manager.broadcast_event({
-            "type": "AUDIT_FAILED",
-            "data": {
-                "id": tx_id,
-                "transaction_id": tx_id,
-                "status": "failed"
-            }
-        })
+    except Exception as error:
+        print(
+            f"[Audit Worker] Could not claim {transaction_id}: {error}"
+        )
+        return
+
+    if not claimed:
+        return
+
+    try:
+        audit_record = await asyncio.to_thread(
+            _compile_and_store_audit,
+            transaction_id,
+            compliance_agent,
+            audit_service,
+        )
+    except Exception as error:
+        try:
+            failure = await asyncio.to_thread(
+                audit_service.record_job_failure,
+                transaction_id,
+                error,
+            )
+        except Exception as persistence_error:
+            print(
+                f"[Audit Worker] Could not record failure for "
+                f"{transaction_id}: {persistence_error}"
+            )
+            return
+
+        if failure["status"] == "PENDING":
+            print(
+                f"[Audit Worker] Audit {transaction_id} will retry at "
+                f"{failure['next_attempt_at']}."
+            )
+
+            await _broadcast_safely({
+                "type": "AUDIT_RETRY_SCHEDULED",
+                "data": {
+                    "transaction_id": transaction_id,
+                    "status": "retry_scheduled",
+                    "attempts": failure["attempts"],
+                    "next_attempt_at": failure["next_attempt_at"],
+                    "error": str(error),
+                },
+            })
+        else:
+            print(
+                f"[Audit Worker] Audit {transaction_id} permanently failed "
+                f"after {failure['attempts']} attempts."
+            )
+
+            await _broadcast_safely({
+                "type": "AUDIT_FAILED",
+                "data": {
+                    "transaction_id": transaction_id,
+                    "status": "failed",
+                    "attempts": failure["attempts"],
+                    "error": str(error),
+                },
+            })
+
+        return
+
+    print(
+        f"[Audit Worker] Audit {audit_record['id']} for transaction "
+        f"{transaction_id} stored in audit_vault."
+    )
+
+    await _broadcast_safely({
+        "type": "AUDIT_COMPLETE",
+        "data": {
+            "id": audit_record["id"],
+            "transaction_id": transaction_id,
+            "status": "complete",
+            "created_at": audit_record["created_at"],
+            "current_hash": audit_record["current_hash"],
+        },
+    })
 
 async def evaluate_and_persist_transaction(
         payload, background_tasks, 
@@ -170,6 +228,17 @@ async def evaluate_and_persist_transaction(
                 (card_id, merchant)
             )
 
+        if is_blocked:
+            conn.execute(
+                """
+                INSERT INTO audit_jobs (
+                    transaction_id,
+                    status
+                ) VALUES (?, 'PENDING');
+                """,
+                (tx_id,),
+            )
+
     response_data = {
         "transaction_id": tx_id,
         "is_blocked": is_blocked,
@@ -192,17 +261,43 @@ async def evaluate_and_persist_transaction(
     })
 
     if is_blocked:
-        payload_dict = payload.model_dump()
-        payload_dict["transaction_id"] = tx_id
-
         background_tasks.add_task(
-            process_agent_audit_worker, 
-            payload_dict,
-            raw_features,
-            hydrated_metrics,
+            process_agent_audit_worker,
+            tx_id,
             compliance_agent,
-            explainer_bridge
+            audit_service,
         )
         response_data["status"] = "Blocked (Audit Pending Background Compilation)"
         
     return response_data
+
+async def audit_job_dispatcher(
+    compliance_agent,
+    audit_service: AuditVaultService,
+    poll_interval_seconds: float = 5.0,
+) -> None:
+    """Continuously process ready audit jobs and scheduled retries."""
+    while True:
+        try:
+            transaction_ids = await asyncio.to_thread(
+                audit_service.find_ready_jobs
+            )
+
+            if transaction_ids:
+                await asyncio.gather(
+                    *(
+                        process_agent_audit_worker(
+                            transaction_id,
+                            compliance_agent,
+                            audit_service,
+                        )
+                        for transaction_id in transaction_ids
+                    )
+                )
+
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            print(f"[Audit Dispatcher] Polling failed: {error}")
+
+        await asyncio.sleep(poll_interval_seconds)

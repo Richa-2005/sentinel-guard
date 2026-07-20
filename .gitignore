@@ -1,8 +1,3 @@
-# -----------------------------------------------------------------------------
-# Sentinel Guard repository boundaries
-# Keep source, dependency manifests, tests, and non-secret *.example templates.
-# Keep credentials, local ledgers, generated artifacts, and machine state local.
-# -----------------------------------------------------------------------------
 
 # Operating-system and editor metadata
 .DS_Store
@@ -124,3 +119,8 @@ temp/
 
 # Local design brief; intentionally excluded from the public repository
 Instructions.md
+
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-wal
+*.sqlite3-shm

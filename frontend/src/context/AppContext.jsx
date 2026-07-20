@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { fetchAudits, fetchMerchants, fetchTransactions, pingBackend } from '../api/client';
+import { fetchAuditJobs, fetchAudits, fetchMerchants, fetchTransactions, pingBackend } from '../api/client';
 import useWebSocketStream from '../hooks/useWebSocketStream';
 
 const AppContext = createContext(null);
@@ -46,6 +46,30 @@ function auditStatusFromRecords(records) {
   }, {});
 }
 
+function normalizeAuditJobStatus(status) {
+  const normalized = String(status || '').toLowerCase();
+  if (normalized === 'pending' || normalized === 'processing') return 'processing';
+  if (normalized === 'completed') return 'complete';
+  if (normalized === 'failed') return 'failed';
+  return 'delayed';
+}
+
+function auditStatusFromJobs(jobs) {
+  return jobs.reduce((statuses, job) => {
+    if (!job.transaction_id) return statuses;
+    const startedAt = Date.parse(job.started_at || job.created_at || '');
+    statuses[job.transaction_id] = {
+      status: normalizeAuditJobStatus(job.status),
+      attempts: job.attempts || 0,
+      nextAttemptAt: job.next_attempt_at || null,
+      lastError: job.last_error || null,
+      startedAt: Number.isNaN(startedAt) ? Date.now() : startedAt,
+      updatedAt: Date.now(),
+    };
+    return statuses;
+  }, {});
+}
+
 export function AppProvider({ children }) {
   const [transactions, setTransactions] = useState([]);
   const [audits, setAudits] = useState([]);
@@ -76,10 +100,17 @@ export function AppProvider({ children }) {
     return next;
   }, []);
 
+  const applyAuditJobs = useCallback((jobs) => {
+    setAuditStatuses((previous) => ({ ...previous, ...auditStatusFromJobs(jobs || []) }));
+    return jobs || [];
+  }, []);
+
   const refreshAudits = useCallback(async () => {
-    const next = await fetchAudits();
-    return applyAudits(next);
-  }, [applyAudits]);
+    const [records, jobs] = await Promise.all([fetchAudits(), fetchAuditJobs()]);
+    applyAudits(records);
+    applyAuditJobs(jobs);
+    return records || [];
+  }, [applyAuditJobs, applyAudits]);
 
   const addTransaction = useCallback((entry) => {
     const enriched = { ...entry, _key: transactionKey(entry) };
@@ -121,14 +152,19 @@ export function AppProvider({ children }) {
 
     setNotice(event.status === 'failed'
       ? { tone: 'warning', title: 'Audit generation issue', message: `The risk decision is retained, but audit ${transactionId} did not complete.` }
-      : { tone: 'success', title: 'Compliance record available', message: `Audit ${transactionId} is now available in the vault.` });
+      : event.status === 'processing'
+        ? { tone: 'warning', title: 'Audit retry scheduled', message: `Audit ${transactionId} will retry automatically.` }
+        : { tone: 'success', title: 'Compliance record available', message: `Audit ${transactionId} is now available in the vault.` });
   }, [refreshAudits]);
 
   const resyncAfterReconnect = useCallback(async () => {
-    const [txResult, auditResult] = await Promise.allSettled([fetchTransactions(), fetchAudits()]);
+    const [txResult, auditResult, jobResult] = await Promise.allSettled([
+      fetchTransactions(), fetchAudits(), fetchAuditJobs(),
+    ]);
     if (txResult.status === 'fulfilled') setTransactions((previous) => mergeTransactions(previous, txResult.value || []));
     if (auditResult.status === 'fulfilled') applyAudits(auditResult.value);
-  }, [applyAudits]);
+    if (jobResult.status === 'fulfilled') applyAuditJobs(jobResult.value);
+  }, [applyAuditJobs, applyAudits]);
 
   const stream = useWebSocketStream({
     onTransaction: handleTransaction,
@@ -139,18 +175,19 @@ export function AppProvider({ children }) {
   const hydrate = useCallback(async () => {
     setLoading(true);
     setDataError('');
-    const [txResult, auditResult, merchantResult] = await Promise.allSettled([
-      fetchTransactions(), fetchAudits(), fetchMerchants(),
+    const [txResult, auditResult, jobResult, merchantResult] = await Promise.allSettled([
+      fetchTransactions(), fetchAudits(), fetchAuditJobs(), fetchMerchants(),
     ]);
     if (txResult.status === 'fulfilled') setTransactions((previous) => mergeTransactions(previous, txResult.value || []));
     if (auditResult.status === 'fulfilled') applyAudits(auditResult.value);
+    if (jobResult.status === 'fulfilled') applyAuditJobs(jobResult.value);
     if (merchantResult.status === 'fulfilled') setMerchants(merchantResult.value || {});
 
-    const failed = [txResult, auditResult, merchantResult].filter((item) => item.status === 'rejected');
+    const failed = [txResult, auditResult, jobResult, merchantResult].filter((item) => item.status === 'rejected');
     if (failed.length) setDataError(failed[0].reason?.message || 'Some operational data could not be loaded.');
-    setHealth(failed.length === 3 ? 'offline' : 'online');
+    setHealth(failed.length === 4 ? 'offline' : 'online');
     setLoading(false);
-  }, [applyAudits]);
+  }, [applyAuditJobs, applyAudits]);
 
   useEffect(() => {
     if (!initialHydrateStartedRef.current) {

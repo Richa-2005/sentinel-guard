@@ -5,18 +5,12 @@ trail
 
 import json
 import requests
-from typing import TypedDict, List, Dict, Any
+from typing import TypedDict, Dict, Any
 from langgraph.graph import StateGraph, END,START
-import hashlib
-from pathlib import Path
 
 from app.core.knowledge import KnowledgeBaseManager
 
 kb_manager = KnowledgeBaseManager()
-
-BASE_DIR = Path(__file__).resolve().parents[2]
-DATA_DIR = BASE_DIR / "data"
-HASH_TRACKER_PATH = DATA_DIR / "last_ledger_hash.txt"
 
 class ComplianceGraphState(TypedDict):
     raw_transaction: Dict[str, Any]
@@ -25,7 +19,6 @@ class ComplianceGraphState(TypedDict):
     forensic_analysis_text: str
     regulatory_context_text: str
     final_audit_report_text: str
-    previous_entry_hash: str
 
 def textForensics(state : ComplianceGraphState) -> ComplianceGraphState:
     """
@@ -141,73 +134,36 @@ def legalVerdict(state : ComplianceGraphState) -> ComplianceGraphState:
     }
 
     try:
-        response = requests.post(ollama_url, json=payload, timeout=60.0)
-        if response.status_code == 200:
-            response_json = response.json()
-            compiled_report = response_json.get("response", "Error: Report generation string key missing.")
-        else:
-            compiled_report = f"LLM Generation Failed. Port returned status code: {response.status_code}"
-    except Exception as e:
-        compiled_report = f"LLM Generation Connection Timeout Error: {str(e)}"
+        response = requests.post(
+            ollama_url,
+            json=payload,
+            timeout=60.0,
+        )
+        response.raise_for_status()
 
+        compiled_report = response.json().get("response")
+        if not compiled_report:
+            raise RuntimeError("LLM returned an empty compliance memo")
+
+    except requests.RequestException as error:
+        raise RuntimeError(
+            f"Compliance memo generation failed: {error}"
+        ) from error
+    
     state["final_audit_report_text"] = compiled_report
 
     return state
-
-def cryptLedger(state : ComplianceGraphState) -> ComplianceGraphState:
-    """
-    Before committing the log text string down to disk, this node automatically 
-    calculates a cryptographic SHA-256 fingerprint hash value of the text, 
-    linking it directly to the hash signature of the previous log entry to maintain 
-    a tamper-evident audit history.
-    """
-
-    report_text = state.get("final_audit_report_text", "")
-    
-    # Fetch the preceding log entry's hash signature safely from disk cache
-    if HASH_TRACKER_PATH.exists():
-        previous_hash = HASH_TRACKER_PATH.read_text(encoding="utf-8").strip()
-    else:
-        # Genesis block default hash if this is the system's first rejection
-        previous_hash = "0000000000000000000000000000000000000000000000000000000000000000"
-        
-    state["previous_entry_hash"] = previous_hash
-
-    #Package the context chunk and calculate the unique cryptographic signature
-    block_payload = f"PREV_HASH: {previous_hash}\nREPORT:\n{report_text}"
-    
-    current_hash = hashlib.sha256(block_payload.encode("utf-8")).hexdigest()
-
-    # Inject the blockchain anchor straight into the report tail string
-    signed_report = (
-        f"{report_text}\n"
-        f"[CRYPTOGRAPHIC LEDGER CHAIN CHECK]\n"
-        f" - PREVIOUS_ENTRY_HASH : {previous_hash}\n"
-        f" - CURRENT_RECORD_HASH : {current_hash}\n"
-    )
-    
-    # Update state value containers
-    state["final_audit_report_text"] = signed_report
-    
-    # Update the sidecar file on disk to act as the head pointer for the next block
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    HASH_TRACKER_PATH.write_text(current_hash, encoding="utf-8")
-
-    return state
-
 
 
 graph = StateGraph(ComplianceGraphState)
 graph.add_node("textForensics",textForensics)
 graph.add_node("crossRefRAG",crossRefRAG)
 graph.add_node("legalVerdict",legalVerdict)
-graph.add_node("cryptLedger",cryptLedger)
 
 graph.add_edge(START,"textForensics")
 graph.add_edge("textForensics","crossRefRAG")
 graph.add_edge("crossRefRAG","legalVerdict")
-graph.add_edge("legalVerdict","cryptLedger")
-graph.add_edge("cryptLedger",END)
+graph.add_edge("legalVerdict",END)
 
 CompilanceApp = graph.compile()
 
@@ -220,7 +176,7 @@ class ComplianceAgent:
     def run_graph_audit(self, transaction_data: dict, hydrated_metrics: dict, shap_payload: dict) -> str:
         """
         Public entrypoint interface executing our compiled multi-node LangGraph DAG.
-        Returns the finalized cryptographically chained compliance audit memo text.
+        Returns the generated compliance audit memo.
         """
         # Initialize the state schema matching our TypedDict format requirement
         initial_state: ComplianceGraphState = {
@@ -230,11 +186,10 @@ class ComplianceAgent:
             "forensic_analysis_text": "",
             "regulatory_context_text": "",
             "final_audit_report_text": "",
-            "previous_entry_hash": ""
         }
         
         # Execute the compiled LangGraph App engine thread wrapper
         final_state = CompilanceApp.invoke(initial_state)
         
-        # Extract the finalized cryptographically secured compliance log text
+        # Extract the completed compliance memo
         return final_state.get("final_audit_report_text", "Error executing state DAG.")

@@ -101,11 +101,19 @@ export default function useWebSocketStream({ onTransaction, onAuditEvent, onReco
           return;
         }
 
-        if (event.type === 'AUDIT_COMPLETE' || event.type === 'AUDIT_FAILED') {
+        if (
+          event.type === 'AUDIT_COMPLETE'
+          || event.type === 'AUDIT_FAILED'
+          || event.type === 'AUDIT_RETRY_SCHEDULED'
+        ) {
           callbacksRef.current.onAuditEvent?.({
             ...event.data,
             transaction_id: event.data.transaction_id || event.data.id,
-            status: event.type === 'AUDIT_FAILED' ? 'failed' : event.data.status || 'complete',
+            status: event.type === 'AUDIT_FAILED'
+              ? 'failed'
+              : event.type === 'AUDIT_RETRY_SCHEDULED'
+                ? 'processing'
+                : event.data.status || 'complete',
           });
         }
       } catch {
