@@ -80,6 +80,15 @@ When a high-risk event is tripped, the background worker launches a 4-node LangG
 3. **`legalVerdict`**: Prompts the localized Llama core to compile a structured demonstration compliance memo.
 4. **`cryptLedger`**: Automates a linked-list chain. It hashes the report text bound with the preceding row’s checksum signature, generating a tamper-evident audit ledger on disk.
 
+### Human-in-the-Loop Review
+
+Blocked model decisions automatically enter an authenticated review queue.
+Analysts can claim cases and submit reasoned dispositions; administrators can
+assign, reopen, and override cases. Original model output is never rewritten,
+and every workflow transition is stored in a database-enforced append-only
+action history. Clients submit the case `version` with every transition so a
+stale browser cannot overwrite another reviewer's work.
+
 ---
 
 ## 📂 Repository Directory Layout

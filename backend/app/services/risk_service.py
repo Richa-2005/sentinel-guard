@@ -7,6 +7,7 @@ from app.core.config import SystemRiskConfig
 from app.core.database import SentinelDatabase
 from app.services.engine_service import ml_executor, compute_ml_and_shap
 from app.services.websocket_service import ws_manager
+from app.services.review_service import ensure_review_case_for_blocked_transaction
 
 db = SentinelDatabase()
 audit_service = AuditVaultService(db)
@@ -199,6 +200,7 @@ async def evaluate_and_persist_transaction(
     )
 
     is_blocked = ensemble_prob >= SystemRiskConfig.CALIBRATED_THRESHOLD
+    review_case_id = None
     
     hydrated_metrics = {
         "card_vel_10m": card_vel_10m,
@@ -239,6 +241,12 @@ async def evaluate_and_persist_transaction(
                 (tx_id,),
             )
 
+            review_case_id = ensure_review_case_for_blocked_transaction(
+                conn,
+                transaction_id=tx_id,
+                risk_score=ensemble_prob,
+            )
+
     response_data = {
         "transaction_id": tx_id,
         "is_blocked": is_blocked,
@@ -268,6 +276,7 @@ async def evaluate_and_persist_transaction(
             audit_service,
         )
         response_data["status"] = "Blocked (Audit Pending Background Compilation)"
+        response_data["review_case_id"] = review_case_id
         
     return response_data
 

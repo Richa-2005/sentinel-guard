@@ -4,9 +4,10 @@ from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 from sqlalchemy.engine import URL
 
-from app.models.user import User
 from app.config import settings
 from app.models.base import Base
+from app.models.review import ReviewAction, ReviewCase
+from app.models.user import User
 from alembic import context
 
 # this is the Alembic Config object, which provides
@@ -41,6 +42,9 @@ BASELINE_TABLES = {
     "merchant_history",
     "transactions_ledger",
 }
+BASELINE_FOREIGN_KEYS = {
+    "fk_review_cases_transaction_id_transactions_ledger",
+}
 
 
 def include_object(object_, name, type_, reflected, compare_to):
@@ -50,6 +54,13 @@ def include_object(object_, name, type_, reflected, compare_to):
         and reflected
         and compare_to is None
         and name in BASELINE_TABLES
+    ):
+        return False
+    if (
+        type_ == "foreign_key_constraint"
+        and reflected
+        and compare_to is None
+        and name in BASELINE_FOREIGN_KEYS
     ):
         return False
     return True

@@ -19,6 +19,7 @@ from app.core.db_session import SessionLocal
 from app.core.security import decode_access_token, validate_auth_configuration
 from app.models.model import TransactionPayload
 from app.routers.auth import router as auth_router
+from app.routers.reviews import router as reviews_router
 from app.services.auth_service import get_user_by_id
 
 # Core Systems Infrastructure
@@ -42,6 +43,7 @@ app = FastAPI(
     version="1.0.0",
 )
 app.include_router(auth_router)
+app.include_router(reviews_router)
 
 # Global Framework State Anchors
 ensemble_gate = None
