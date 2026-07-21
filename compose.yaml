@@ -1,0 +1,20 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sentinel-guard-backend:local
+    ports:
+      - "8000:8000"
+    environment:
+      OLLAMA_BASE_URL: http://host.docker.internal:11434/api/generate
+      SENTINEL_DATABASE_PATH: /app/runtime/sentinel_storage.db
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - sentinel-runtime:/app/runtime
+    restart: unless-stopped
+
+volumes:
+  sentinel-runtime:
+    name: sentinel-guard-runtime

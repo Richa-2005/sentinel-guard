@@ -1,0 +1,81 @@
+
+SYNTHETIC DEMONSTRATION POLICY — NOT A REAL COMPANY DOCUMENT
+This project fixture is fictional and is provided only for portfolio testing.
+
+NEXUS FINTECH SOLUTIONS | GLOBAL CORPORATE OPERATIONAL POLICY MANUAL
+
+Document Ref: NX-POL-2026-T&E-04
+Classification: INTERNAL COMPLIANCE STRICTLY CONFIDENTIAL
+Effective Date: January 01, 2026
+Version: 4.2.0
+
+--------------------------------------------------------------------------------
+SECTION 1: OBJECTIVE & CORPORATE COMPLIANCE MANDATE
+--------------------------------------------------------------------------------
+1.1 This document defines the mandatory compliance boundaries, threshold restrictions, 
+and risk classification parameters governing all transactional assets processed 
+via corporate network issuance protocols. 
+
+1.2 All employee, vendor, and systemic merchant accounts linked to Nexus FinTech 
+issuance routing must operate strictly within the thresholds defined herein. Any 
+deviation or multi-layered anomaly trigger will result in immediate real-time 
+gateway containment, sub-millisecond transaction rejection, and automated 
+compliance escalation.
+
+--------------------------------------------------------------------------------
+SECTION 2: TRANSACTION MAGNITUDE CAPS & QUANTITATIVE VELOCITY BOUNDARIES
+--------------------------------------------------------------------------------
+2.1 INDIVIDUAL EXPENSE SINGLE-SWIPE CEILING
+The maximum allowable fiat value magnitude for any single, isolated transaction 
+attempt is strictly capped at 25,000 Paise (Twenty-Five Thousand Paise / INR 250.00 equivalent). 
+Any transaction attempt matching or exceeding a value magnitude of 25,000 Paise 
+is classified as an un-authorized outlier event and must be structurally blocked 
+by the real-time evaluation middleware unless pre-approved via digital token.
+
+2.2 ROLLING TEMPORAL VELOCITY CONSTRAINTS
+To prevent programmatic automated fraud-script leakage and brute-force card testing, 
+individual card signatures are restricted to a maximum threshold of three (3) 
+transaction authorization requests within any rolling ten (10) minute window. 
+A calculation outcome exceeding 3 swipes in 10 minutes represents a direct 
+velocity breach.
+
+--------------------------------------------------------------------------------
+SECTION 3: TEMPORAL ANOMALIES & RESTRICTED OPERATIONAL WINDOWS
+--------------------------------------------------------------------------------
+3.1 OFF-HOURS RESTRICTED PROCESSING TIER
+Empirical enterprise transaction monitoring shows that corporate fraud patterns 
+spike heavily during off-hours. Consequently, an operational high-risk window 
+is defined between the hours of 01:00 AM and 05:00 AM local terminal time.
+
+3.2 Any individual transaction pipeline execution hitting the API gateway inside 
+this 01:00 AM - 05:00 AM temporal boundary is subjected to an elevated risk multiplier. 
+Transactions executed during this window that simultaneously display an unknown 
+merchant anchor or elevated transaction amount must be flagged for asynchronous 
+LLM audit trail generation.
+
+--------------------------------------------------------------------------------
+SECTION 4: HARDWARE AND DEVICE FINGERPRINT BOUNDARIES
+--------------------------------------------------------------------------------
+4.1 DEVICE MULTIPLEXING LIMITATIONS (FRAUD RING TIERS)
+To insulate the network against organized fraud rings utilizing localized hardware 
+device emulators to swipe multiple stolen payment cards simultaneously, a strict 
+topological entity link boundary is enforced.
+
+4.2 No single, unique hardware device signature ID (`device_id`) may be associated 
+with more than three (3) distinct card tokens (`card_id`) inside a sliding 
+twenty-four (24) hour operational ledger cycle. If a device fingerprint maps 
+to a 4th unique card signature within 24 hours, the device is immediately 
+classified as a malicious multiplex asset and blacklisted.
+
+--------------------------------------------------------------------------------
+SECTION 5: REGULATORY ALIGNMENT & ESCALATION PROTOCOLS
+--------------------------------------------------------------------------------
+5.1 In strict compliance with central banking regulations and the Reserve Bank 
+of India (RBI) Master Directions on Fraud Risk Management, any transaction blocked 
+by the system due to a simultaneous breach of Single-Swipe Caps and Temporal 
+Off-Hours limits must be automatically shunted onto a non-blocking background 
+worker queue.
+
+5.2 The automated agentic worker must perform a game-theoretic feature importance 
+lookup, compile an immutable compliance memo, and chain the resulting record's 
+SHA-256 hash securely into the disk audit pool.

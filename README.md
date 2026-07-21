@@ -36,7 +36,7 @@ The following architectural model isolates the low-latency transactional executi
               │                                                                        │
               │  [Node 1: textForensics] ──► Extracts XGB/LGB SHAP Split Consensus     │
               │                                      │                                 │
-              │  [Node 2: crossRefRAG]   ──► Queries 4-Doc Regulatory KB (RBI/Visa)    │
+              │  [Node 2: crossRefRAG]   ──► Queries synthetic compliance fixtures     │
               │                                      │                                 │
               │  [Node 3: legalVerdict]  ──► Compiles Structured Memo via Llama 3.1    │
               │                                      │                                 │
@@ -59,7 +59,7 @@ The following architectural model isolates the low-latency transactional executi
 | **ML Engine Matrix** | XGBoost & LightGBM | Blended model ensemble utilizing weighted probability trees to evaluate non-linear risk shapes. |
 | **Explainability Core** | SHAP (SHapley Additive exPlanations) | Translates raw tree decisions into mathematical feature contributions for transparent model audits. |
 | **Agent State Machine**| LangGraph | Structured Directed Acyclic Graph (DAG) managing immutable state transitions across legal audit nodes. |
-| **Knowledge Base (RAG)**| In-Memory Regex Chunking | Targeted, high-speed paragraph parser isolating specific legal clauses (RBI Circulars, Visa Core Rules) via regex positiva lookaheads. |
+| **Knowledge Base (RAG)**| In-Memory Regex Chunking | Targeted paragraph retrieval across clearly labelled synthetic compliance fixtures and an MCC registry. |
 | **LLM Execution Node** | Ollama (Llama 3.1) | Localized inference execution node ensuring strict data privacy and enterprise zero-data leakage compliance. |
 | **Frontend Dashboard** | React & Tailwind CSS | Modern, dark cyber-command dashboard featuring glowing telemetry gauges and live stream simulators. |
 
@@ -76,8 +76,8 @@ The system references real-time and historical transactions to calculate statefu
 ### Model Consensus & Multi-Agent Legal Reasoning
 When a high-risk event is tripped, the background worker launches a 4-node LangGraph network:
 1. **`textForensics`**: Combes individual model SHAP maps to verify tree consensus. Flags an `ARCHITECTURAL DIVERGENCE ALERT` if XGBoost and LightGBM output contradictory node directions.
-2. **`crossRefRAG`**: Cross-references the active metrics against a 4-document reference corpus including the official **RBI Master Directions on Fraud Risk Management**, the public **Visa Core Rules manual**, and a 334-row Indexed **Merchant Category Code (MCC)** directory.
-3. **`legalVerdict`**: Prompts the localized Llama core to compile an official compliance memo structured down to individual section headers.
+2. **`crossRefRAG`**: Cross-references active metrics against synthetic RBI/Visa-style demonstration fixtures and a 334-row indexed **Merchant Category Code (MCC)** directory. The fixtures are not official legal sources.
+3. **`legalVerdict`**: Prompts the localized Llama core to compile a structured demonstration compliance memo.
 4. **`cryptLedger`**: Automates a linked-list chain. It hashes the report text bound with the preceding row’s checksum signature, generating a tamper-evident audit ledger on disk.
 
 ---
@@ -97,8 +97,8 @@ sentinel-guard/
 │   │   └── main.py               # FastAPI router paths, worker pool, & endpoints
 │   └── data/
 │       ├── corporate_policy.txt  # Internal corporate threshold ceilings
-│       ├── rbi_circular.txt      # Text extracted from real RBI Central Bank frameworks
-│       ├── network_tos.txt       # Copy-pasted rules from Visa Core Rules text
+│       ├── rbi_circular.txt      # Synthetic RBI-style demonstration fixture
+│       ├── network_tos.txt       # Synthetic card-network demonstration fixture
 │       └── mcc_codes.csv         # Structured 334-row industry sector risk lookup directory
 └── frontend/
     └── src/
@@ -155,6 +155,27 @@ npm run dev
 
 ```
 
+### Backend Docker Runtime
+
+Start the persistent backend service while Ollama is running on the host
+machine:
+
+```bash
+docker compose up --build
+```
+
+Compose stores SQLite state in the named `sentinel-guard-runtime` volume, so
+transactions, audit jobs, and hash-linked records survive container
+replacement. The image uses `http://host.docker.internal:11434/api/generate`
+to reach host Ollama, with a host-gateway mapping for Linux. Override
+`OLLAMA_BASE_URL`, `OLLAMA_MODEL`, or `OLLAMA_TIMEOUT_SECONDS` when using a
+different Ollama deployment.
+
+The small inference and synthetic knowledge-base assets required to run a fresh clone are
+versioned under `backend/data/`. Generated training data and mutable runtime
+state remain excluded. See the [model card](backend/data/MODEL_CARD.md) for
+evaluation results, limitations, and checksum verification.
+
 ---
 
 ## Real-Time Verification Testing
@@ -198,4 +219,3 @@ D. MITIGATION & ACTIONABLE DEFENSE ROADMAP: Compile FMR-1 matrix filing within 3
 ```
 
 ---
-

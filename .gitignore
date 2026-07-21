@@ -1,4 +1,5 @@
 
+
 # Operating-system and editor metadata
 .DS_Store
 **/.DS_Store
@@ -87,10 +88,19 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Backend runtime data and generated ML/compliance artifacts
-# This directory contains transaction records, SQLite state, WAL files, audit
-# reports, model binaries, generated datasets, and local compliance material.
-backend/data/
+# Backend inference assets are intentionally versioned because they are small
+# and required for a reproducible clone. Generated datasets and runtime state
+# remain ignored.
+backend/data/*
+!backend/data/xgb_compliance_gate.json
+!backend/data/lgb_compliance_gate.txt
+!backend/data/model_config.json
+!backend/data/mcc_codes.csv
+!backend/data/corporate_policy.txt
+!backend/data/network_tos.txt
+!backend/data/rbi_circular.txt
+!backend/data/MODEL_CARD.md
+!backend/data/artifacts.sha256
 backend/app/data/
 *.db
 *.db-journal

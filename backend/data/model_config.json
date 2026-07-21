@@ -1,0 +1,11 @@
+{
+  "CALIBRATED_THRESHOLD": 0.9574951827526093,
+  "FEATURE_DIMENSIONS": [
+    "amount_paise",
+    "card_vel_10m",
+    "device_card_ratio_30m",
+    "device_card_limit_crossed",
+    "is_known_merchant",
+    "is_off_hours_window"
+  ]
+}

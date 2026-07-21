@@ -7,9 +7,10 @@ from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+from app.config import settings
 
-BACKEND_DIR = Path(__file__).resolve().parents[2]
-DEFAULT_DATABASE_PATH = BACKEND_DIR / "data" / "sentinel_storage.db"
+
+DEFAULT_DATABASE_PATH = settings.SENTINEL_DATABASE_PATH
 
 SCHEMA_STATEMENTS: tuple[str, ...] = (
     """

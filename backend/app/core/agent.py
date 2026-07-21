@@ -8,9 +8,28 @@ import requests
 from typing import TypedDict, Dict, Any
 from langgraph.graph import StateGraph, END,START
 
+from app.config import settings
 from app.core.knowledge import KnowledgeBaseManager
 
 kb_manager = KnowledgeBaseManager()
+
+
+def normalize_impact_map(impacts: Dict[str, Any]) -> Dict[str, float]:
+    """Normalize legacy raw SHAP maps for pending jobs stored before this change."""
+    numeric_impacts = {
+        feature_name: float(value)
+        for feature_name, value in impacts.items()
+    }
+    total_magnitude = sum(abs(value) for value in numeric_impacts.values())
+
+    if total_magnitude <= 1e-12:
+        return {feature_name: 0.0 for feature_name in numeric_impacts}
+
+    return {
+        feature_name: value / total_magnitude
+        for feature_name, value in numeric_impacts.items()
+    }
+
 
 class ComplianceGraphState(TypedDict):
     raw_transaction: Dict[str, Any]
@@ -19,6 +38,9 @@ class ComplianceGraphState(TypedDict):
     forensic_analysis_text: str
     regulatory_context_text: str
     final_audit_report_text: str
+    ollama_base_url: str
+    ollama_model: str
+    ollama_timeout_seconds: float
 
 def textForensics(state : ComplianceGraphState) -> ComplianceGraphState:
     """
@@ -29,37 +51,42 @@ def textForensics(state : ComplianceGraphState) -> ComplianceGraphState:
 
     shap_data = state.get("shap_payload", {})
     
-    xgb_impacts = shap_data.get("xgb_feature_impacts", {})
-    lgb_impacts = shap_data.get("lgb_feature_impacts", {})
-    ensemble_impacts = shap_data.get("ensemble_feature_impacts", {})
+    xgb_impacts = shap_data.get("xgb_normalized_impacts") or (
+        normalize_impact_map(shap_data.get("xgb_feature_impacts", {}))
+    )
+    lgb_impacts = shap_data.get("lgb_normalized_impacts") or (
+        normalize_impact_map(shap_data.get("lgb_feature_impacts", {}))
+    )
+    feature_names = list(dict.fromkeys([*xgb_impacts, *lgb_impacts]))
     
     findings = []
 
-    findings.append("PRIMARY ENSEMBLE SYSTEM IMPACTS:")
-    for feature_name, val_weight in ensemble_impacts.items():
-        weight_float = float(val_weight)
-        if weight_float > 0.01:
-            findings.append(f" - Blended Feature [{feature_name}]: POSITIVE risk push of +{round(weight_float, 4)}.")
-        elif weight_float < -0.01:
-            findings.append(f" - Blended Feature [{feature_name}]: NEGATIVE safety anchor of {round(weight_float, 4)}.")
+    findings.append(
+        "MODEL-SPECIFIC RELATIVE SHAP EVIDENCE "
+        "(normalized independently within each model):"
+    )
 
-  
-    findings.append("\nTREE ARCHITECTURE CONSENSUS DEEP DIVE")
-    for feature_name in ensemble_impacts.keys():
+    for feature_name in feature_names:
         x_w = float(xgb_impacts.get(feature_name, 0.0))
         l_w = float(lgb_impacts.get(feature_name, 0.0))
-        
-        # Check if one tree model completely contradicts the other model's structural split direction
-        if (x_w > 0.05 and l_w < -0.05) or (x_w < -0.05 and l_w > 0.05):
+
+        if (
+            abs(x_w) >= 0.01
+            and abs(l_w) >= 0.01
+            and (x_w > 0) != (l_w > 0)
+        ):
             findings.append(
                 f" ARCHITECTURAL DIVERGENCE ALERT on Feature '{feature_name}':\n"
-                f"   -> XGBoost processed a split impact weight of: {round(x_w, 4)}\n"
-                f"   -> LightGBM processed a split impact weight of: {round(l_w, 4)}\n"
-                f"   * Result: The ensemble gate stabilized this divergence via mathematical averaging."
+                f"   -> XGBoost relative contribution: {x_w:+.2%}\n"
+                f"   -> LightGBM relative contribution: {l_w:+.2%}\n"
+                "   * Result: The models disagree on direction; raw SHAP "
+                "magnitudes are not averaged."
             )
         else:
             findings.append(
-                f" - Feature '{feature_name}' Node Consensus: [XGB Weight: {round(x_w, 4)} | LGB Weight: {round(l_w, 4)}]"
+                f" - Feature '{feature_name}': "
+                f"[XGB relative share: {x_w:+.2%} | "
+                f"LGB relative share: {l_w:+.2%}]"
             )
 
     forensic_summary = "\n".join(findings)
@@ -94,6 +121,9 @@ def legalVerdict(state : ComplianceGraphState) -> ComplianceGraphState:
     raw_tx = state.get("raw_transaction", {})
     forensics = state.get("forensic_analysis_text", "")
     reg_context = state.get("regulatory_context_text", "")
+    ollama_base_url = state["ollama_base_url"]
+    ollama_model = state["ollama_model"]
+    ollama_timeout_seconds = state["ollama_timeout_seconds"]
 
     llm_prompt = f"""
     [COMPLIANCE ROLE SYSTEM MANDATE: TIER-1 RISK EXECUTIVE AUDIT GENERATOR]
@@ -112,6 +142,9 @@ def legalVerdict(state : ComplianceGraphState) -> ComplianceGraphState:
     ---
     3. RELEVANT REGULATORY RULES CORE REF:
     {reg_context}
+
+    The supplied reference corpus contains synthetic demonstration material.
+    Treat it as an internal portfolio fixture, not official legal guidance.
     
     ---
     MANDATORY REPORT FORMAT DIRECTIVE:
@@ -121,23 +154,22 @@ def legalVerdict(state : ComplianceGraphState) -> ComplianceGraphState:
    
     A. EXECUTIVE RISK VERDICT: [State clear reason for block matching forensic weights]
     B. TECHNICAL SPECIFICATION PROFILE: [Detail active transaction features and amounts]
-    C. REGULATORY COMPLIANCE CROSS-REFERENCE: [Quote exact matching clauses or sections from the texts]
+    C. REGULATORY COMPLIANCE CROSS-REFERENCE: [Reference matching sections from the supplied synthetic corpus]
     D. MITIGATION & ACTIONABLE DEFENSE ROADMAP: [Provide operational steps for account tracking]
 
     """
     
-    ollama_url = "http://localhost:11434/api/generate"
     payload = { 
-        "model": "llama3.1",
+        "model": ollama_model,
         "prompt": llm_prompt,
         "stream": False
     }
 
     try:
         response = requests.post(
-            ollama_url,
+            ollama_base_url,
             json=payload,
-            timeout=60.0,
+            timeout=ollama_timeout_seconds,
         )
         response.raise_for_status()
 
@@ -169,9 +201,19 @@ CompilanceApp = graph.compile()
 
 
 class ComplianceAgent:
-    def __init__(self, ollama_url: str = "http://localhost:11434/api/generate"):
-        self.ollama_url = ollama_url
-        self.model_name = "llama3.1"
+    def __init__(
+        self,
+        ollama_base_url: str | None = None,
+        model_name: str | None = None,
+        timeout_seconds: float | None = None,
+    ):
+        self.ollama_base_url = ollama_base_url or settings.OLLAMA_BASE_URL
+        self.model_name = model_name or settings.OLLAMA_MODEL
+        self.timeout_seconds = (
+            timeout_seconds
+            if timeout_seconds is not None
+            else settings.OLLAMA_TIMEOUT_SECONDS
+        )
 
     def run_graph_audit(self, transaction_data: dict, hydrated_metrics: dict, shap_payload: dict) -> str:
         """
@@ -186,6 +228,9 @@ class ComplianceAgent:
             "forensic_analysis_text": "",
             "regulatory_context_text": "",
             "final_audit_report_text": "",
+            "ollama_base_url": self.ollama_base_url,
+            "ollama_model": self.model_name,
+            "ollama_timeout_seconds": self.timeout_seconds,
         }
         
         # Execute the compiled LangGraph App engine thread wrapper

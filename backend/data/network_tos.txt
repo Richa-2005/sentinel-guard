@@ -1,0 +1,66 @@
+
+SYNTHETIC DEMONSTRATION REFERENCE — NOT OFFICIAL VISA RULES
+The clauses and identifiers below are fictional portfolio test data. They must
+not be treated as network requirements, legal guidance, or quoted Visa policy.
+
+VISA GLOBAL NETWORK CORE OPERATIONAL RULES | SERVICES & SYSTEM INTEGRITY
+
+Document Ref: VCR-VPSR-GLOBAL-2026
+Classification: NETWORK ISSUANCE COMPLIANCE BOUNDARIES
+Source: Synthetic Sentinel Guard knowledge-base fixture
+
+--------------------------------------------------------------------------------
+SECTION 1: MERCHANDISE RISK DEVIATION & TRANSACTION RISK MONITORING
+--------------------------------------------------------------------------------
+1.1 Visa Core Rule 4.1.2.1: An automated transaction risk monitoring system must 
+be maintained by all network participants, processing agents, and high-volume 
+gateways. The risk engine must evaluate inbound transaction authorization messages 
+in mid-flight to verify the authenticity of credentials, cardholder patterns, 
+and terminal safety vectors.
+
+1.2 Systemic risk scores are generated dynamically. If an inbound authorization 
+message exhibits structural deviations from normal usage profiles (such as 
+unusual geographic offsets, un-characteristic merchant category codes (MCC), or 
+sudden velocity shifts), the transaction must be flagged immediately for secondary 
+risk assessment or outright real-time mitigation passes.
+
+--------------------------------------------------------------------------------
+SECTION 2: ACCOUNT VELOCITY BOUNDARIES & CONCURRENCY CONTROLS
+--------------------------------------------------------------------------------
+2.1 Visa Core Rule 5.3.7.4: Card-issuing platforms must enforce strict real-time 
+velocity limits to identify and counter programmatic testing and systematic card 
+sweeps. Programmatic velocity triggers represent a severe integrity breach, 
+exhibiting dense consecutive authorization passes.
+
+2.2 Velocity limits must evaluate consecutive transaction volumes within a rolling 
+temporal matrix window. If an account profile crosses the structural volume cap, 
+the network node must throw an inline decline authorization code (Decline Code 59: 
+Suspected Fraud). The authorization path is temporarily suspended until identity 
+re-verification occurs.
+
+--------------------------------------------------------------------------------
+SECTION 3: HARDWARE SECURITY AND TERMINAL IDENTIFICATION MULTIPLEXING
+--------------------------------------------------------------------------------
+3.1 Visa Product Rule 6.2.1.8: A unique hardware signature and transaction source 
+fingerprint, including terminal IDs, IP arrays, device hardware tokens, and MAC 
+addresses, must accompany all digital payment requests. 
+
+3.2 Multiple transaction allocations using distinct account numbers running 
+simultaneously through a single terminal device footprint within a contracted 
+timeframe represent an anomalous entity relationship. Such multiplexing configurations 
+indicate a distributed terminal intrusion or a localized fraud ring operation. 
+Gateways are required to intercept these multiplex parameters and lock the 
+underlying credential streams immediately.
+
+--------------------------------------------------------------------------------
+SECTION 4: REGULATORY COMPLIANCE AND FORENSIC ESCALATION DIRECTIVES
+--------------------------------------------------------------------------------
+4.1 Visa Core Rule 7.1.5.3: Any transaction containment pass or systemic gateway 
+rejection triggered by automated velocity tracking systems or multiplex fraud ring 
+identifiers must be immediately fed down into an offline compliance auditing process.
+
+4.2 The system must maintain an immutable, append-only, and cryptographically sound 
+audit trail logging the explicit analytical variables (such as dynamic metrics, 
+ensemble model risk coefficients, and feature maps) that drove the gateway's decision. 
+These records must be preserved for compliance inspections by central bank auditors 
+and internal network risk teams.

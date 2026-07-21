@@ -1,0 +1,335 @@
+mcc_code,category,risk_level
+0742,Veterinary Services,MEDIUM
+0763,Agricultural Cooperatives,MEDIUM
+0780,Horticultural and Landscaping Services,MEDIUM
+1520,General Contractors-Residential and Commercial,MEDIUM
+1711,"Air Conditioning, Heating and Plumbing Contractors",MEDIUM
+1731,Electrical Contractors,MEDIUM
+1740,"Insulation, Masonry, Plastering, Stonework and Tile Setting Contractors",MEDIUM
+1750,Carpentry Contractors,MEDIUM
+1761,"Roofing and Siding, Sheet Metal Work Contractors",MEDIUM
+1771,Concrete Work Contractors,MEDIUM
+1799,"Contractors, Special Trade Contractors-not elsewhere classified",MEDIUM
+2741,Miscellaneous Publishing and Printing,MEDIUM
+2791,"Typesetting, Plate Making and Related Services",MEDIUM
+2842,"Sanitation, Polishing and Specialty Cleaning Preparations",MEDIUM
+3000,United Airlines,MEDIUM
+3001,American Airlines,MEDIUM
+3005,British Airways,MEDIUM
+3007,Air France,MEDIUM
+3008,Lufthansa German Airlines,MEDIUM
+3351,Affiliated Auto Rental,MEDIUM
+3355,Sixt Car Rental,MEDIUM
+3357,Hertz,MEDIUM
+3389,Avis Rent-A-Car,MEDIUM
+3405,Enterprise Rent-A-Car,MEDIUM
+3501,Holiday Inns,MEDIUM
+3502,Best Western,MEDIUM
+3503,Sheraton,MEDIUM
+3504,Hilton,MEDIUM
+3509,Marriott,MEDIUM
+4011,Railroads-Freight,MEDIUM
+4111,"Transportation-Suburban and Local Commuter Passenger, including Ferries",MEDIUM
+4112,Passenger Railways,MEDIUM
+4119,Ambulance Services,MEDIUM
+4121,Taxicabs and Limousines,MEDIUM
+4131,Bus Lines,MEDIUM
+4214,"Motor Freight Carriers, Trucking-Local/Long Distance, Moving and Storage Companies, Local Delivery",MEDIUM
+4215,"Courier Services-Air and Ground, Freight Forwarders",MEDIUM
+4225,"Public Warehousing-Farm Products, Refrigerated Goods, Household Goods Storage",MEDIUM
+4411,Cruise Lines,MEDIUM
+4457,Boat Leases and Boat Rentals,MEDIUM
+4468,"Marinas, Marine Service/Supplies",MEDIUM
+4511,"Air Carriers, Airlines-not elsewhere classified",MEDIUM
+4582,"Airports, Airport Terminals, Flying Fields",MEDIUM
+4722,Travel Agencies and Tour Operators,MEDIUM
+4723,Package Tour Operators (Germany Only),MEDIUM
+4761,Telemarketing of Travel Related Services and Vitamins,MEDIUM
+4784,"Bridge and Road Fees, Tolls",MEDIUM
+4789,Transportation Services Not Elsewhere Classified,MEDIUM
+4812,Telecommunication Equipment Including Telephone Sales,MEDIUM
+4813,Key-Entry Telecom Merchant providing single local and long-distance phone calls using a central access number in a non-face-to-face environment using key entry,MEDIUM
+4814,Telecommunication Services including but not limited to prepaid phone services and recurring phone services,MEDIUM
+4816,Computer Network/Information Services,MEDIUM
+4821,Telegraph Services,MEDIUM
+4829,Wire Transfer Money Orders / Money Transfer,HIGH
+4899,"Cable, Satellite, and Other Pay Television and Radio Services",MEDIUM
+4900,"Utilities-Electric, Gas, Heating Oil, Sanitary, Water",LOW
+5013,Motor Vehicle Supplies and New Parts,MEDIUM
+5021,Office and Commercial Furniture,MEDIUM
+5039,Construction Materials Not Elsewhere Classified,MEDIUM
+5044,"Office, Photographic, Photocopy and Microfilm Equipment",MEDIUM
+5045,"Computers, Computer Peripheral Equipment, Software",MEDIUM
+5046,Commercial Equipment Not Elsewhere Classified,MEDIUM
+5047,Dental/Laboratory/Medical/Ophthalmic Hospital Equipment and Supplies,LOW
+5051,Metal Service Centers and Offices,MEDIUM
+5065,Electrical Parts and Equipment,MEDIUM
+5072,Hardware Equipment and Supplies,MEDIUM
+5074,Plumbing and Heating Equipment,MEDIUM
+5085,Industrial Supplies Not Elsewhere Classified,MEDIUM
+5094,"Precious Stones and Metals, Watches and Jewelry",HIGH
+5099,Durable Goods Not Elsewhere Classified,MEDIUM
+5111,"Stationery, Office Supplies, Printing and Writing Paper",MEDIUM
+5122,"Drugs, Drug Proprietors and Druggists Sundries",MEDIUM
+5131,"Piece Goods, Notions, and Other Dry Goods",MEDIUM
+5137,"Men's, Women's and Children's Uniforms and Commercial Clothing",MEDIUM
+5139,Commercial Footware,MEDIUM
+5169,Chemicals and Allied Products Not Elsewhere Classified,MEDIUM
+5172,Petroleum and Petroleum Products,MEDIUM
+5192,"Books, Periodicals and Newspapers",MEDIUM
+5193,"Florists Supplies, Nursery Stock and Flowers",MEDIUM
+5198,"Paints, Varnishes and Supplies",MEDIUM
+5199,Non-Durable Goods Not Elsewhere Classified,MEDIUM
+5200,Home Supply Warehouse Stores,MEDIUM
+5211,"Building Materials, Lumber Stores",MEDIUM
+5231,"Glass, Paint, Wallpaper Stores",MEDIUM
+5251,Hardware Stores,MEDIUM
+5261,Lawn and Garden Supply Stores,MEDIUM
+5271,Mobile Home Dealers,MEDIUM
+5299,Warehouse Club Gas,MEDIUM
+5300,Wholesale Clubs,MEDIUM
+5309,Duty Free Stores,MEDIUM
+5310,Discount Stores,MEDIUM
+5311,Department Stores,MEDIUM
+5331,Variety Stores,MEDIUM
+5399,Miscellaneous General Merchandise Stores,MEDIUM
+5411,"Grocery Stores, Supermarkets",LOW
+5422,Freezer and Locker Meat Provisioners,MEDIUM
+5441,"Candy, Nut and Confectionery Stores",MEDIUM
+5451,Dairy Products Stores,MEDIUM
+5462,Bakeries,MEDIUM
+5499,"Miscellaneous Food Stores-Convenience Stores, Markets, Specialty Stores, and Vending Machines",MEDIUM
+5511,"Automobile and Truck Dealers-Sales, Service, Repairs, Parts and Leasing",MEDIUM
+5521,Automobile and Truck Dealers-(Used Only)-Sales,MEDIUM
+5532,Automotive Tire Stores,MEDIUM
+5533,Automotive Parts and Accessories Stores,MEDIUM
+5541,Service Stations (With or Without Ancillary Services),MEDIUM
+5542,"Fuel Dispenser, Automated",MEDIUM
+5551,Boat Dealers,MEDIUM
+5561,"Camper Dealers, Recreational and Utility Trailers",LOW
+5571,Motorcycle Shops and Dealers,MEDIUM
+5592,Motor Home Dealers,MEDIUM
+5598,Snowmobile Dealers,MEDIUM
+5599,"Miscellaneous Automotive, Aircraft, and Farm Equipment Dealers-Not Elsewhere Classified",MEDIUM
+5611,Men's and Boys' Clothing and Accessories Stores,MEDIUM
+5621,Women's Ready to Wear Stores,MEDIUM
+5631,Women's Accessory and Specialty Stores,MEDIUM
+5641,Children's and Infants' Wear Stores,MEDIUM
+5651,Family Clothing Stores,MEDIUM
+5655,"Sports Apparel, and Riding Apparel Stores",MEDIUM
+5661,Shoe Stores,MEDIUM
+5681,Furriers and Fur Shops,MEDIUM
+5691,Men's and Women's Clothing Stores,MEDIUM
+5697,"Alterations, Mending, Seamstresses, Tailors",MEDIUM
+5698,Wig and Toupee Shops,MEDIUM
+5699,Accessory and Apparel Stores-Miscellaneous,MEDIUM
+5712,"Equipment, Furniture and Home Furnishings Stores (except Appliances)",MEDIUM
+5713,Floor Covering Stores,MEDIUM
+5714,"Drapery, Upholstery and Window Coverings Stores",MEDIUM
+5718,"Fireplace, Fireplace Screens and Accessories Stores",MEDIUM
+5719,Miscellaneous House Furnishing Specialty Shops,MEDIUM
+5722,Household Appliance Stores,MEDIUM
+5732,Electronics Sales,MEDIUM
+5733,"Music Stores-Musical Instruments, Pianos and Sheet Music",MEDIUM
+5734,Computer Software Stores,MEDIUM
+5735,Record Shops,MEDIUM
+5811,Caterers,MEDIUM
+5812,Eating Places and Restaurants,MEDIUM
+5813,"Bars, Cocktail Lounges, Discotheques, Nightclubs and Taverns-Drinking Places (Alcoholic Beverages)",MEDIUM
+5814,Fast Food Restaurants,MEDIUM
+5815,"Digital Goods: Books, Movies, Music",MEDIUM
+5816,Digital Goods: Games,MEDIUM
+5817,Digital Goods: Applications (Excludes Games),MEDIUM
+5818,Digital Goods: Large Digital Goods Merchant / Multi-Category,MEDIUM
+5912,Drug Stores and Pharmacies,MEDIUM
+5921,"Package Stores-Beer, Wine and Liquor",MEDIUM
+5931,"Second Hand Stores, Used Merchandise Stores",MEDIUM
+5932,"Antique Shops-Sales, Repairs and Restoration Services",MEDIUM
+5933,Pawn Shops,HIGH
+5935,Wrecking and Salvage Yards,MEDIUM
+5937,Antique Reproduction Stores,MEDIUM
+5940,Bicycle Shops-Sales and Service,MEDIUM
+5941,Sporting Goods Stores,MEDIUM
+5942,Book Stores,MEDIUM
+5943,"Office, School Supply and Stationery Stores",LOW
+5944,"Clock, Jewelry, Watch and Silverware Stores",HIGH
+5945,"Game, Toy and Hobby Shops",MEDIUM
+5946,Camera and Photographic Supply Stores,MEDIUM
+5947,"Card, Gift, Novelty and Souvenir Shops",MEDIUM
+5948,Leather Goods and Luggage Stores,MEDIUM
+5949,"Fabric, Needlework, Piece Goods and Sewing Stores",MEDIUM
+5950,Crystal and Glassware Stores,MEDIUM
+5960,Direct Marketing Insurance Services,MEDIUM
+5961,Mail Order Houses Including Catalog Order Stores,MEDIUM
+5962,Direct Marketing-Travel Related Arrangement Services,MEDIUM
+5963,Door-to-Door Sales,MEDIUM
+5964,Direct Marketing-Catalog Merchants,MEDIUM
+5965,Direct Marketing-Combination Catalog and Retail Merchant,MEDIUM
+5966,Direct Marketing-Outbound Telemarketing Merchants,MEDIUM
+5967,Direct Marketing-Inbound Telemarketing Merchants,MEDIUM
+5968,Direct Marketing-Continuity/Subscription Merchants,MEDIUM
+5969,Direct Marketing-Other Direct Marketers-Not Elsewhere Classified,MEDIUM
+5970,"Artist Supply Stores, Craft Shops",MEDIUM
+5971,Art Dealers and Galleries,MEDIUM
+5972,Stamp and Coin Stores-Philatelic and Numismatic Supplies,MEDIUM
+5973,Religious Goods Stores,LOW
+5974,Rubber Stamp Store,MEDIUM
+5975,"Hearing Aids-Sales, Service, Supply Stores",MEDIUM
+5976,Orthopedic Goods-Artificial Limb Stores,MEDIUM
+5977,Cosmetic Stores,MEDIUM
+5978,"Typewriter Stores-Rentals, Sales, Service",MEDIUM
+5983,"Fuel Dealers-Coal, Fuel Oil, Liquefied Petroleum, Wood",MEDIUM
+5992,Florists,MEDIUM
+5993,Cigar Stores and Stands,MEDIUM
+5994,News Dealers and Newsstands,MEDIUM
+5995,"Pet Shops, Pet Food and Supplies",MEDIUM
+5996,Swimming Pools-Sales and Supplies,MEDIUM
+5997,Electric Razor Stores-Sales and Service,MEDIUM
+5998,Tent and Awning Shops,MEDIUM
+5999,Miscellaneous and Specialty Retail Stores,MEDIUM
+6010,Member Financial Institution-Manual Cash Disbursements,HIGH
+6011,Member Financial Institution-Automated Cash Disbursements,HIGH
+6012,Member Financial Institution-Merchandise And Services,HIGH
+6050,Quasi Cash-Member Financial Institution,HIGH
+6051,Quasi Cash-Merchant,HIGH
+6211,Securities-Brokers and Dealers,HIGH
+6236,Aero Servicio Carabobo,MEDIUM
+6300,"Insurance Sales, Underwriting and Premiums",MEDIUM
+6381,Insurance-Premiums,MEDIUM
+6513,Real Estate Agents and Managers-Rentals,MEDIUM
+6529,Remote Stored Value Load Member Financial Institution,MEDIUM
+6530,Remove Stored Value Load Merchant,MEDIUM
+6535,Value Purchase-Member Financial Institution,MEDIUM
+6536,MoneySend Intracountry,MEDIUM
+6537,MoneySend Intercountry,MEDIUM
+6538,MoneySend Funding,MEDIUM
+6539,Funding Transaction (Excluding MoneySend),MEDIUM
+6540,POI (Point of Interaction) Funding Transactions (Excluding MoneySend),MEDIUM
+6611,Overpayments,MEDIUM
+6760,Savings Bonds,MEDIUM
+7011,"Lodging-Hotels, Motels, Resorts-not elsewhere classified",MEDIUM
+7012,Timeshares,MEDIUM
+7032,Sporting and Recreational Camps,MEDIUM
+7033,Campgrounds and Trailer Parks,MEDIUM
+7210,"Cleaning, Garment and Laundry Services",MEDIUM
+7211,Laundry Services-Family and Commercial,MEDIUM
+7216,Dry Cleaners,MEDIUM
+7217,Carpet and Upholstery Cleaning,MEDIUM
+7221,Photographic Studios,MEDIUM
+7230,Barber and Beauty Shops,MEDIUM
+7251,"Hat Cleaning Shops, Shoe Repair Shops, Shoe Shine Parlors",MEDIUM
+7261,Funeral Service and Crematories,MEDIUM
+7273,Dating Services,MEDIUM
+7276,Tax Preparation Service,MEDIUM
+7277,"Debt, Marriage, Personal-Counseling Services",MEDIUM
+7278,"Buying/Shopping Clubs, Services",MEDIUM
+7280,Hospital Patient-Personal Funds Withdrawal,LOW
+7295,Babysitting Services,MEDIUM
+7296,"Clothing Rental-Costumes, Uniforms and Formal Wear",MEDIUM
+7297,Massage Parlors,MEDIUM
+7298,Health and Beauty Spas,MEDIUM
+7299,Other Services-Not Elsewhere Classified,MEDIUM
+7311,Advertising Services,MEDIUM
+7321,Consumer Credit Reporting Agencies,MEDIUM
+7332,Blueprinting and Photocopying Services,MEDIUM
+7333,"Commercial Art, Graphics, Photography",MEDIUM
+7338,"Quick Copy, Reproduction and Blueprinting Services",MEDIUM
+7339,Stenographic and Secretarial Support Services,MEDIUM
+7342,Exterminating and Disinfecting Services,MEDIUM
+7349,"Cleaning and Maintenance, Janitorial Services",MEDIUM
+7361,Employment Agencies and Temporary Help Services,MEDIUM
+7372,"Computer Programming, Data Processing and Integrated System Design Services",MEDIUM
+7375,Information Retrieval Services,MEDIUM
+7379,"Computer Maintenance, Repair And Services-Not Elsewhere Classified",MEDIUM
+7392,"Consulting, Management and Public Relations Services",MEDIUM
+7393,"Detective Agencies, Protective Agencies, Security Services including Armored Cars, Guard Dogs",MEDIUM
+7394,"Equipment Rental and Leasing Services, Furniture Rental, Tool Rental",MEDIUM
+7395,"Photo Developing, Photofinishing Laboratories",MEDIUM
+7399,Business Services Not Elsewhere Classified,MEDIUM
+7512,Automobile Rental Agency-Not Elsewhere Classified,MEDIUM
+7513,Truck Rental,MEDIUM
+7519,Motor Home and Recreational Vehicle Rental,MEDIUM
+7523,Automobile Parking Lots and Garages,MEDIUM
+7524,Express Payment Service Merchants-Parking Lots and Garages,MEDIUM
+7531,Automotive Body Repair Shops,MEDIUM
+7534,Tire Retreading and Repair Shops,MEDIUM
+7535,Automotive Paint Shops,MEDIUM
+7538,Automotive Service Shops,MEDIUM
+7542,Car Washes,MEDIUM
+7549,Towing Services,MEDIUM
+7622,Electronic Repair Shops,MEDIUM
+7623,Air Conditioning and Refrigeration Repair Shops,MEDIUM
+7629,"Appliance Repair Shops, Electrical and Small",MEDIUM
+7631,"Clock, Jewelry and Watch Repair Shops",MEDIUM
+7641,"Furniture-Reupholstery, Repair and Refinishing",MEDIUM
+7692,Welding Repair,MEDIUM
+7699,Miscellaneous Repair Shops and Related Services,MEDIUM
+7800,Government Owned Lottery,MEDIUM
+7801,Government-Licensed Casinos (Online or Internet Gambling),CRITICAL
+7802,Government-Licensed Horse/Dog Racing,MEDIUM
+7829,Motion Picture and Video Tape Production and Distribution,MEDIUM
+7832,Motion Picture Theaters,MEDIUM
+7833,Express Payment Service - Motion Picture Theater,MEDIUM
+7841,DVD/Video Tape Rental Stores,MEDIUM
+7911,"Dance Halls, Schools and Studios",LOW
+7922,"Theatrical Producers (Except Motion Pictures), Ticket Agencies",MEDIUM
+7929,"Bands, Orchestras and Miscellaneous Entertainers-Not Elsewhere Classified",MEDIUM
+7932,Pool and Billiard Establishments,MEDIUM
+7933,Bowling Alleys,MEDIUM
+7941,"Athletic Fields, Commercial Sports, Professional Sports Clubs, Sports Promoters",MEDIUM
+7991,Tourist Attractions and Exhibits,MEDIUM
+7992,"Golf Courses, Public",MEDIUM
+7993,Video Amusement Game Supplies,MEDIUM
+7994,Video Game Arcades and Establishments,MEDIUM
+7995,Gambling Transactions / Betting,CRITICAL
+7996,"Amusement Parks, Carnivals, Circuses, Carnivals, Fortune Tellers",MEDIUM
+7997,"Clubs-Country Clubs, Membership (Athletic, Recreation, Sports), Private Golf Courses",MEDIUM
+7998,"Aquariums, Dolphinariums, Zoos and Seaquariums",MEDIUM
+7999,Recreation Services-Not Elsewhere Classified,MEDIUM
+8011,Doctors-not elsewhere classified,LOW
+8021,Dentists and Orthodontists,MEDIUM
+8031,Osteopathic Physicians,MEDIUM
+8041,Chiropractors,MEDIUM
+8042,Optometrists and Ophthalmologists,MEDIUM
+8043,"Opticians, Optical Goods and Eyeglasses",MEDIUM
+8044,Optical Goods and Eyeglasses,MEDIUM
+8049,"Chiropodists, Podiatrists",MEDIUM
+8050,Nursing and Personal Care Facilities,MEDIUM
+8062,Hospitals,LOW
+8071,Dental and Medical Laboratories,MEDIUM
+8099,"Health Practitioners, Medical Services-Not Elsewhere Classified",MEDIUM
+8111,"Attorneys, Legal Services",MEDIUM
+8211,"Schools, Elementary and Secondary",LOW
+8220,"Colleges, Universities, Professional Schools and Junior Colleges",LOW
+8241,"Schools, Correspondence",LOW
+8244,"Schools, Business and Secretarial",LOW
+8249,"Schools, Trade and Vocational",LOW
+8299,Schools And Educational Services-Not Elsewhere Classified,LOW
+8351,Child Care Services,MEDIUM
+8398,"Organizations, Charitable and Social Service",LOW
+8641,"Associations-Civic, Social and Fraternal",MEDIUM
+8651,"Organizations, Political",MEDIUM
+8661,"Organizations, Religious",LOW
+8675,Automobile Associations,MEDIUM
+8699,"Organizations, Membership-Not Elsewhere Classified",MEDIUM
+8734,Testing Laboratories (Non-Medical),MEDIUM
+8743,Testing Laboratories (Non-Medical),MEDIUM
+8911,"Architectural, Engineering and Surveying Services",MEDIUM
+8931,"Accounting, Auditing and Bookkeeping Services",MEDIUM
+8999,Professional Services-Not Elsewhere Classified,MEDIUM
+9034,I-Purchasing Pilot,MEDIUM
+9211,Court Costs Including Alimony and Child Support,MEDIUM
+9222,Fines,MEDIUM
+9223,Bail and Bond Payments,HIGH
+9311,Tax Payments,MEDIUM
+9399,Government Services-Not Elsewhere Classified,MEDIUM
+9401,I-Purchasing Pilot,MEDIUM
+9402,Postal Services-Government Only,MEDIUM
+9405,Intra-Government Purchases-Government Only,MEDIUM
+9700,Automated Referral Service,MEDIUM
+9701,Visa Credential Server,MEDIUM
+9702,GCAS Emergency Services,MEDIUM
+9751,"UK Supermarkets, Electronic Hot File",LOW
+9752,"UK Petrol Stations, Electronic Hot File",MEDIUM
+9754,"Gambling-Horse, Dog Racing, State Lottery",CRITICAL
+9950,Intra-Company Purchases,MEDIUM

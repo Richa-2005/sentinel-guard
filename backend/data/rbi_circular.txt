@@ -1,0 +1,66 @@
+
+SYNTHETIC DEMONSTRATION REFERENCE — NOT AN OFFICIAL RBI CIRCULAR
+The clauses, dates, identifiers, and thresholds below are fictional portfolio
+test data and must not be relied upon as regulatory or legal guidance.
+
+RESERVE BANK OF INDIA | MASTER DIRECTIONS ON FRAUD RISK MANAGEMENT
+
+Document Ref: RBI/2026-27/FMR-CORE-01
+Classification: PUBLIC REGULATORY COMPLIANCE MANDATE
+Effective Date: July 01, 2026
+Source: Synthetic Sentinel Guard knowledge-base fixture
+
+--------------------------------------------------------------------------------
+SECTION 1: INTRODUCTION & STRUCTURAL AUDIT ACCOUNTABILITY
+--------------------------------------------------------------------------------
+1.1 The incidence of frauds, dacoities, and robberies in financial institutions remains a critical vector of concern. While the primary operational responsibility for preventing malicious intrusions and asset leaks lies with the banks themselves, the Reserve Bank of India (RBI) mandates structural procedural guidelines and internal checking layers. To facilitate systemic insulation, banks must scrupulously adhere to the reporting timelines prescribed below.
+
+1.2 Operational audits reveal that anomalies are frequently detected long after perpetration, introducing severe systemic risk. Financial institutions must streamline telemetry pipelines to report fraud vectors without delay. Staff accountability matrices must be enforced specifically in respect of processing or notification delays.
+
+1.3 Delays in reporting directly degrade the network's ability to issue caution advices and trace illicit transactional modus operandi. Failure to adhere strictly to fixed timelines renders the institution liable for penal action under Section 47(A) of the Banking Regulation Act, 1949. A senior official must be specifically nominated to assume ownership of all regulatory data compilation workflows.
+
+--------------------------------------------------------------------------------
+SECTION 2: CLASSIFICATION METRIC MATRIX
+--------------------------------------------------------------------------------
+2.1 To maintain mathematical and ledger uniformity, fraud profiles are mapped directly to provisions of the Indian Penal Code:
+   (a) Misappropriation and criminal breach of trust.
+   (b) Forged instruments, book manipulation, or fictitious accounts.
+   (c) Unauthorised credit extensions for reward or illegal gratification.
+   (d) Negligence and cash shortages.
+   (e) Cheating and forgery.
+   (f) Irregularities in foreign exchange transactions.
+
+2.2 Core Quantitative Shortcuts for Automated Systems:
+   - Cash shortages exceeding 10,000 units must be treated as fraudulent transactions out-of-the-box.
+   - Cash shortages exceeding 5,000 units must be classified as fraud if detected by internal management/auditors and not reported on the day of occurrence by the handling entity.
+   - In cases of forged instruments, reporting and police tracking duties belong strictly to the paying banker (the entity that releases the payment or suffers the asset loss).
+
+--------------------------------------------------------------------------------
+SECTION 3: QUANTITATIVE REGULATORY THRESHOLDS
+--------------------------------------------------------------------------------
+3.1 VELOCITY PROFILE TIERING (LESS THAN 1.00 LAKH)
+Individual compliance incidents involving amounts under 1.00 Lakh are handled via aggregate analytical telemetry streams. They do not require custom standalone filings but must be compiled into standard structural Quarterly Statements (Form FMR-2) within 15 days of the closing quarter.
+
+3.2 SUSPICIOUS VOLUMETRIC INCIDENTS (1.00 LAKH TO 25.00 LAKH)
+Any anomalous fraud vector scaling to 1.00 Lakh or higher must be compiled individual case-by-case inside the standardized FMR-1 matrix format and filed securely with the Regional Office of Urban Banks Department within three (3) weeks of target identification.
+
+3.3 CRITICAL COMPLIANCE OUTLIERS (25.00 LAKH AND ABOVE)
+Transactions crossing the 25.00 Lakh cap represent severe operational system failures. These events require direct D.O. notification to the Principal Chief General Manager of the Department of Banking Supervision within seven (7) days of realization, alongside an un-clubbed FMR-1 submission within 3 weeks.
+
+--------------------------------------------------------------------------------
+SECTION 4: SYSTEMIC BORROWER & MODUS OPERANDI TRACKING
+--------------------------------------------------------------------------------
+4.1 Systems must implement specialized checks to profile unscrupulous behavioral patterns including:
+   - Programmatic kite flying in clearing effects and fraudulent discount strategies.
+   - Sudden removal or inflation of underlying pledged asset/stock values.
+   - Intentional diversion of funds or criminal neglect of systemic discipline.
+
+4.2 Attempted Fraud Scoping Boundaries:
+For any high-velocity threat vector where potential exposure matches or exceeds 25.00 Lakh, even if foiled or caught in mid-air by gateway validation layers, a comprehensive forensic review must be submitted directly before the internal Audit Committee of the Board. This report must outline the underlying transaction modus operandi, system failure points, and immediate structural patches applied.
+
+--------------------------------------------------------------------------------
+SECTION 5: CORPORATE BOARD AUDITING TIMELINES
+--------------------------------------------------------------------------------
+5.1 Every individual fraud alert crossing the 1.00 Lakh structural threshold must be put up directly before the Board of Directors promptly upon discovery to determine organizational liability, process failures, and staff negligence.
+
+5.2 Institutions must execute a thorough Annual Review of Frauds. The inspection must empirically calculate the time taken to detect fraud waves (segmented into 3 months, 6 months, 1 year, and 1+ years), trace recovery ratios, review the effectiveness of automated prevention rules, and verify that systemic loopholes are permanently plugged.

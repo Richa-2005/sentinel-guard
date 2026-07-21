@@ -5,11 +5,23 @@ a transaction.
 """
 
 import json
+import numpy as np
 import shap
 import pandas as pd
 from xgboost import XGBClassifier
 import lightgbm as lgb
 from app.core.trainer import FraudModelTrainer
+
+
+def normalize_contributions(values):
+    """Return signed within-model contribution shares without changing direction."""
+    contributions = np.asarray(values, dtype=float)
+    total_magnitude = float(np.abs(contributions).sum())
+
+    if total_magnitude <= 1e-12:
+        return np.zeros_like(contributions)
+
+    return contributions / total_magnitude
 
 class TransactionExplainer:
     def __init__(self, xgb_path, lgb_path):
@@ -40,12 +52,15 @@ class TransactionExplainer:
 
         feature_names = transaction_row.columns.tolist()
 
-        ens_contributions = (xgb_contributions + lgb_contributions) / 2
+        xgb_normalized = normalize_contributions(xgb_contributions)
+        lgb_normalized = normalize_contributions(lgb_contributions)
         
         unified_payload = {
+            "explanation_basis": "signed_relative_contribution_per_model",
             "xgb_feature_impacts": dict(zip(feature_names, [round(float(x), 4) for x in xgb_contributions])),
             "lgb_feature_impacts": dict(zip(feature_names, [round(float(x), 4) for x in lgb_contributions])),
-            "ensemble_feature_impacts": dict(zip(feature_names, [round(float(x), 4) for x in ens_contributions]))
+            "xgb_normalized_impacts": dict(zip(feature_names, [round(float(x), 6) for x in xgb_normalized])),
+            "lgb_normalized_impacts": dict(zip(feature_names, [round(float(x), 6) for x in lgb_normalized])),
         }
 
         return json.dumps(unified_payload, indent=4)

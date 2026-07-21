@@ -14,21 +14,36 @@ const metricMeta = {
 
 const money = (value = 0) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(value / 100);
 
+const contributionKeys = [
+  'amount_paise',
+  'card_vel_10m',
+  'device_card_ratio_30m',
+  'device_card_limit_crossed',
+  'is_known_merchant',
+  'is_off_hours_window',
+];
+
+function normalizeModelImpacts(values = {}) {
+  const total = Object.values(values).reduce((sum, value) => sum + Math.abs(Number(value) || 0), 0);
+  return Object.fromEntries(Object.entries(values).map(([key, value]) => [
+    key,
+    total > 0 ? (Number(value) || 0) / total : 0,
+  ]));
+}
+
 function SignalBar({ label, value, max = 1, alert }) {
   const width = Math.max(2, Math.min(100, (Number(value) / max) * 100));
   return <div className="signal-row"><div><span>{label}</span><strong className="mono">{Number(value).toFixed(3)}</strong></div><div className="signal-track"><span className={alert ? 'signal-fill signal-fill--critical' : 'signal-fill'} style={{ width: `${width}%` }} /></div></div>;
 }
 
 function ContributionComparison({ shap = {} }) {
-  const xgb = shap.xgb_feature_impacts || {};
-  const lgb = shap.lgb_feature_impacts || {};
-  const keys = ['amount_paise', 'card_vel_10m', 'device_card_ratio_30m'];
-  return <div className="contribution-list">{keys.map((key) => {
+  const xgb = shap.xgb_normalized_impacts || normalizeModelImpacts(shap.xgb_feature_impacts);
+  const lgb = shap.lgb_normalized_impacts || normalizeModelImpacts(shap.lgb_feature_impacts);
+  return <div className="contribution-list">{contributionKeys.map((key) => {
     const x = Number(xgb[key] || 0);
     const l = Number(lgb[key] || 0);
     const divergent = Math.sign(x) !== Math.sign(l) && Math.abs(x) > 0.01 && Math.abs(l) > 0.01;
-    const scale = Math.max(Math.abs(x), Math.abs(l), 0.01);
-    return <div className="contribution" key={key}><div className="contribution-title"><strong>{metricMeta[key]?.[0] || key.replaceAll('_', ' ')}</strong>{divergent && <Badge tone="warning">Divergence</Badge>}</div><div className="comparison-line"><span>XGB</span><div><i style={{ width: `${Math.abs(x / scale) * 100}%` }} className={x >= 0 ? 'positive' : 'negative'} /></div><output className="mono">{x > 0 ? '+' : ''}{x.toFixed(4)}</output></div><div className="comparison-line"><span>LGB</span><div><i style={{ width: `${Math.abs(l / scale) * 100}%` }} className={l >= 0 ? 'positive' : 'negative'} /></div><output className="mono">{l > 0 ? '+' : ''}{l.toFixed(4)}</output></div></div>;
+    return <div className="contribution" key={key}><div className="contribution-title"><strong>{metricMeta[key]?.[0] || key.replaceAll('_', ' ')}</strong>{divergent && <Badge tone="warning">Divergence</Badge>}</div><div className="comparison-line"><span>XGB</span><div><i style={{ width: `${Math.abs(x) * 100}%` }} className={x >= 0 ? 'positive' : 'negative'} /></div><output className="mono">{x >= 0 ? '+' : ''}{(x * 100).toFixed(1)}%</output></div><div className="comparison-line"><span>LGB</span><div><i style={{ width: `${Math.abs(l) * 100}%` }} className={l >= 0 ? 'positive' : 'negative'} /></div><output className="mono">{l >= 0 ? '+' : ''}{(l * 100).toFixed(1)}%</output></div></div>;
   })}</div>;
 }
 
@@ -81,7 +96,7 @@ export default function IncidentCenter() {
             <header className="investigation-header"><div><span className="eyebrow">Blocked transaction</span><h2 className="mono">{selected.card_id}</h2><p className="mono">{selected.device_id} · MCC {selected.merchant_id}</p></div><div className="risk-score"><span>Ensemble risk</span><strong className="mono">{(Number(selected.ensemble_risk_score) * 100).toFixed(3)}%</strong><Badge tone="critical">Blocked</Badge></div></header>
             <div className="decision-context"><div><span>Amount</span><strong className="mono">{money(selected.amount_paise)}</strong></div><div><span>Evaluated</span><strong className="mono">{new Date(selected.timestamp).toLocaleString()}</strong></div><div><span>Merchant</span><strong className="mono">{selected.merchant_id}</strong></div></div>
             <section className="investigation-section"><div className="section-heading"><div><span className="eyebrow">Enrichment signals</span><h3>Hydrated risk indicators</h3></div></div><div className="signals-grid">{Object.entries(metricMeta).map(([key, [label, max]]) => { const value = Number(selected.hydrated_metrics?.[key] || 0); const alert = key === 'card_vel_10m' ? value >= 3 : key === 'is_known_merchant' ? value === 0 : value > 0.5; return <SignalBar key={key} label={label} value={value} max={max} alert={alert} />; })}</div></section>
-            <section className="investigation-section"><div className="section-heading"><div><span className="eyebrow">Model evidence</span><h3>XGBoost and LightGBM contributions</h3></div><p>Positive values push toward risk; negative values act as safety anchors.</p></div><ContributionComparison shap={selected.shap_payload} /></section>
+            <section className="investigation-section"><div className="section-heading"><div><span className="eyebrow">Model evidence</span><h3>XGBoost and LightGBM contributions</h3></div><p>Signed relative share within each model. Compare direction and importance, not raw magnitude.</p></div><ContributionComparison shap={selected.shap_payload} /></section>
             <details className="payload-disclosure"><summary>Raw transaction payload</summary><pre>{JSON.stringify({ card_id: selected.card_id, device_id: selected.device_id, merchant_id: selected.merchant_id, amount_paise: selected.amount_paise, ensemble_risk_score: selected.ensemble_risk_score, hydrated_metrics: selected.hydrated_metrics, shap_payload: selected.shap_payload }, null, 2)}</pre></details>
             <button className="button button--primary" onClick={openAudit}><FileSearch size={16} />Open related audit records</button>
           </div>}
