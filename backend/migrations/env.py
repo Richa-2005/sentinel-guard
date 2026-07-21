@@ -4,7 +4,9 @@ from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 from sqlalchemy.engine import URL
 
+from app.models.user import User
 from app.config import settings
+from app.models.base import Base
 from alembic import context
 
 # this is the Alembic Config object, which provides
@@ -28,7 +30,29 @@ if config.config_file_name is not None:
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
-target_metadata = None
+target_metadata = Base.metadata
+
+# These tables predate SQLAlchemy models and are owned by migration 0001.
+# Excluding only those reflected tables prevents autogenerate from proposing
+# destructive drops while still comparing the ORM-managed users table.
+BASELINE_TABLES = {
+    "audit_jobs",
+    "audit_vault",
+    "merchant_history",
+    "transactions_ledger",
+}
+
+
+def include_object(object_, name, type_, reflected, compare_to):
+    """Keep pre-ORM baseline tables out of autogenerate comparisons."""
+    if (
+        type_ == "table"
+        and reflected
+        and compare_to is None
+        and name in BASELINE_TABLES
+    ):
+        return False
+    return True
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
@@ -55,6 +79,7 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         render_as_batch=True,
+        include_object=include_object,
     )
 
     with context.begin_transaction():
@@ -79,6 +104,7 @@ def run_migrations_online() -> None:
             connection=connection,
             target_metadata=target_metadata,
             render_as_batch=True,
+            include_object=include_object,
         )
 
         with context.begin_transaction():
