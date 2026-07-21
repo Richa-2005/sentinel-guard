@@ -20,6 +20,7 @@ from app.core.security import decode_access_token, validate_auth_configuration
 from app.models.model import TransactionPayload
 from app.routers.audits import router as audits_router
 from app.routers.auth import router as auth_router
+from app.routers.monitoring import router as monitoring_router
 from app.routers.reviews import router as reviews_router
 from app.services.auth_service import get_user_by_id
 
@@ -46,6 +47,7 @@ app = FastAPI(
 app.include_router(auth_router)
 app.include_router(reviews_router)
 app.include_router(audits_router)
+app.include_router(monitoring_router)
 
 # Global Framework State Anchors
 ensemble_gate = None

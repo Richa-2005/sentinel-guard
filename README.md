@@ -97,6 +97,15 @@ digest, every previous-hash link, the chain head, and hash formatting, then
 returns a structured integrity report with the first invalid record and bounded
 issue details.
 
+### Operational Model Monitoring
+
+Administrators can call `GET /api/v1/monitoring/model?window_hours=24` for a
+time-windowed report covering prediction volume, block rate, risk-score
+distribution, human-review coverage and outcomes, resolution latency, and
+recent-versus-previous score-distribution PSI. Drift is reported as
+`insufficient_data` until both windows contain at least 30 predictions; this is
+operational monitoring rather than a claim of real-world model accuracy.
+
 ---
 
 ## 📂 Repository Directory Layout
