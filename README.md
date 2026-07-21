@@ -137,10 +137,19 @@ Navigate into the backend workspace, set up your virtual environment, and activa
 cd backend
 python -m venv venv
 source venv/bin/activate  # On Windows use: venv\Scripts\activate
-pip install -r requirements.txt
+pip install -r ../requirements.txt
+cp .env.example .env
+
+# Put the output of this command into JWT_SECRET_KEY in backend/.env
+openssl rand -hex 32
+
+alembic -c alembic.ini upgrade head
+
+# Create the first administrator interactively
+python -m app.cli.create_admin --email admin@example.com --name "Demo Admin"
 
 # Boot the FastAPI server instance on its local port
-python app/main.py
+uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 ```
 
@@ -161,6 +170,7 @@ Start the persistent backend service while Ollama is running on the host
 machine:
 
 ```bash
+export JWT_SECRET_KEY="$(openssl rand -hex 32)"
 docker compose up --build
 ```
 
@@ -170,6 +180,11 @@ replacement. The image uses `http://host.docker.internal:11434/api/generate`
 to reach host Ollama, with a host-gateway mapping for Linux. Override
 `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, or `OLLAMA_TIMEOUT_SECONDS` when using a
 different Ollama deployment.
+
+The container applies pending Alembic migrations before starting the API.
+Public registration creates analysts only. Create the first administrator with
+the CLI command shown above; authenticated administrators can then manage roles
+and account status through `/api/v1/auth/users`.
 
 The small inference and synthetic knowledge-base assets required to run a fresh clone are
 versioned under `backend/data/`. Generated training data and mutable runtime
@@ -189,6 +204,7 @@ You can input manual transactions using the custom sandbox panel. To trigger a f
 ```bash
 curl -X 'POST' \
   '[http://127.0.0.1:8000/api/v1/evaluate](http://127.0.0.1:8000/api/v1/evaluate)' \
+  -H 'Authorization: Bearer <access_token>' \
   -H 'Content-Type: application/json' \
   -d '{
   "amount_paise": 950000,

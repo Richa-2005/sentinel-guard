@@ -2,6 +2,8 @@ alembic==1.18.5
 annotated-doc==0.0.4
 annotated-types==0.7.0
 anyio==4.13.0
+argon2-cffi==25.1.0
+argon2-cffi-bindings==25.1.0
 certifi==2026.5.20
 cffi==2.0.0
 charset-normalizer==3.4.7
@@ -53,6 +55,7 @@ pydantic==2.7.4
 pydantic-settings==2.14.2
 pydantic_core==2.18.4
 Pygments==2.20.0
+PyJWT==2.13.0
 pyparsing==3.3.2
 python-dateutil==2.9.0.post0
 python-dotenv==1.0.1
@@ -87,3 +90,4 @@ watchfiles==1.2.0
 websockets==16.0
 wheel==0.47.0
 xgboost==2.0.3
+pwdlib[argon2]==0.3.0

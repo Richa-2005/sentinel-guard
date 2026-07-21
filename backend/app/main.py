@@ -1,8 +1,25 @@
-import uvicorn
+import asyncio
 import json
+from contextlib import suppress
+
+import uvicorn
+from fastapi import (
+    BackgroundTasks,
+    Depends,
+    FastAPI,
+    HTTPException,
+    WebSocket,
+    WebSocketDisconnect,
+)
+from jwt.exceptions import InvalidTokenError
+
 from app.config import settings
-from fastapi import FastAPI, BackgroundTasks, WebSocket, WebSocketDisconnect, HTTPException
+from app.core.auth_dependencies import get_current_user, require_admin
+from app.core.db_session import SessionLocal
+from app.core.security import decode_access_token, validate_auth_configuration
 from app.models.model import TransactionPayload
+from app.routers.auth import router as auth_router
+from app.services.auth_service import get_user_by_id
 
 # Core Systems Infrastructure
 from app.core.ensemble import FinancialEnsembleGate
@@ -20,13 +37,11 @@ from app.services.risk_service import (
 
 from app.services.log_service import fetch_audit_jobs, fetch_compliance_audits
 
-import asyncio
-from contextlib import suppress
-
 app = FastAPI(
     title="Sentinel Guard: Agentic FinTech Risk & Compliance Engine",
-    version="1.0.0"
+    version="1.0.0",
 )
+app.include_router(auth_router)
 
 # Global Framework State Anchors
 ensemble_gate = None
@@ -41,6 +56,8 @@ async def startup_event():
     global explainer_bridge
     global compliance_agent
     global audit_dispatcher_task
+
+    validate_auth_configuration()
 
     xgb_path = settings.DATA_DIR / "xgb_compliance_gate.json"
     lgb_path = settings.DATA_DIR / "lgb_compliance_gate.txt"
@@ -87,24 +104,52 @@ async def shutdown_event():
 
 @app.websocket("/ws/live-feed")
 async def websocket_endpoint(websocket: WebSocket):
-    """Persistent bidirectional channel broadcasting data tickers directly to React components."""
-    await ws_manager.connect(websocket)
+    """Authenticate, then stream live transaction events to the client."""
+    await websocket.accept()
     try:
+        authentication = await asyncio.wait_for(
+            websocket.receive_json(),
+            timeout=10,
+        )
+        if not isinstance(authentication, dict):
+            await websocket.close(code=1008, reason="Authentication required")
+            return
+        token = authentication.get("token")
+        if authentication.get("type") != "authenticate" or not isinstance(token, str):
+            await websocket.close(code=1008, reason="Authentication required")
+            return
+
+        user_id = decode_access_token(token)
+        with SessionLocal() as session:
+            user = get_user_by_id(session, user_id)
+            if user is None or not user.is_active:
+                await websocket.close(code=1008, reason="Authentication failed")
+                return
+
+        await ws_manager.connect(websocket, accept=False)
+        await websocket.send_json({"type": "authenticated"})
         while True:
             await websocket.receive_text()
+    except (InvalidTokenError, RuntimeError, TimeoutError):
+        await websocket.close(code=1008, reason="Authentication failed")
     except WebSocketDisconnect:
+        pass
+    finally:
         ws_manager.disconnect(websocket)
 
 
-@app.post("/api/v1/evaluate")
-async def evaluate_transaction(payload: TransactionPayload, background_tasks: BackgroundTasks):
+@app.post("/api/v1/evaluate", dependencies=[Depends(get_current_user)])
+async def evaluate_transaction(
+    payload: TransactionPayload,
+    background_tasks: BackgroundTasks,
+):
     """Intercept inbound transactions and map tasks through isolated compute pools."""
     return await evaluate_and_persist_transaction(
         payload, background_tasks, ensemble_gate, explainer_bridge, compliance_agent
     )
 
 
-@app.get("/api/v1/transactions")
+@app.get("/api/v1/transactions", dependencies=[Depends(get_current_user)])
 def get_transactions():
     """Historical transaction ledger bootstrapping hook."""
     try:
@@ -125,7 +170,7 @@ def get_transactions():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/v1/merchants")
+@app.get("/api/v1/merchants", dependencies=[Depends(get_current_user)])
 def get_merchants():
     """Exposes the MCC dynamically fetched dynamic mapping indices."""
     try:
@@ -135,19 +180,19 @@ def get_merchants():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/v1/audits")
+@app.get("/api/v1/audits", dependencies=[Depends(get_current_user)])
 def get_audits():
     """Return persisted compliance audits."""
     return fetch_compliance_audits(db)
 
 
-@app.get("/api/v1/audit-jobs")
+@app.get("/api/v1/audit-jobs", dependencies=[Depends(get_current_user)])
 def get_audit_jobs():
     """Return durable audit generation and retry statuses."""
     return fetch_audit_jobs(db)
 
 
-@app.get("/api/v1/debug-fraud-sample")
+@app.get("/api/v1/debug-fraud-sample", dependencies=[Depends(require_admin)])
 def get_fraud_sample():
     try:
         from app.core.trainer import FraudModelTrainer

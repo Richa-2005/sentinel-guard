@@ -1,5 +1,7 @@
 from pathlib import Path
+from typing import Literal
 
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -19,6 +21,9 @@ class Settings(BaseSettings):
     OLLAMA_BASE_URL: str = "http://127.0.0.1:11434/api/generate"
     OLLAMA_MODEL: str = "llama3.1"
     OLLAMA_TIMEOUT_SECONDS: float = 60.0
+    JWT_SECRET_KEY: SecretStr | None = None
+    JWT_ALGORITHM: Literal["HS256"] = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=30, gt=0, le=1440)
 
 
 settings = Settings()
