@@ -89,6 +89,14 @@ and every workflow transition is stored in a database-enforced append-only
 action history. Clients submit the case `version` with every transition so a
 stale browser cannot overwrite another reviewer's work.
 
+### Audit-Chain Verification
+
+Authenticated users can call `GET /api/v1/audits/verify` to recompute the
+complete audit vault from its genesis hash. The verifier checks every stored
+digest, every previous-hash link, the chain head, and hash formatting, then
+returns a structured integrity report with the first invalid record and bounded
+issue details.
+
 ---
 
 ## 📂 Repository Directory Layout

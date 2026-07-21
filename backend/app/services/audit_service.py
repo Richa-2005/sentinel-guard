@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import datetime, timezone, timedelta
 
 from app.core.database import SentinelDatabase
 
 
 GENESIS_HASH = "0" * 64
+SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
 def _utc_now() -> str:
     """Return UTC in the same sortable format used by SQLite."""
@@ -18,6 +20,30 @@ def _utc_now() -> str:
         .isoformat(timespec="milliseconds")
         .replace("+00:00", "Z")
     )
+
+
+def _calculate_audit_hash(
+    *,
+    transaction_id: str,
+    event_type: str,
+    compliance_memo: str,
+    created_at: str,
+    previous_hash: str,
+) -> str:
+    """Calculate the canonical digest used by both writing and verification."""
+    hash_payload = json.dumps(
+        {
+            "transaction_id": transaction_id,
+            "event_type": event_type,
+            "compliance_memo": compliance_memo,
+            "created_at": created_at,
+            "previous_hash": previous_hash,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+    return hashlib.sha256(hash_payload.encode("utf-8")).hexdigest()
 
 class AuditVaultService:
     """Append immutable compliance records to the audit hash chain."""
@@ -52,22 +78,13 @@ class AuditVaultService:
                 else GENESIS_HASH
             )
 
-            hash_payload = json.dumps(
-                {
-                    "transaction_id": transaction_id,
-                    "event_type": event_type,
-                    "compliance_memo": compliance_memo,
-                    "created_at": created_at,
-                    "previous_hash": previous_hash,
-                },
-                sort_keys=True,
-                separators=(",", ":"),
-                ensure_ascii=False,
+            current_hash = _calculate_audit_hash(
+                transaction_id=transaction_id,
+                event_type=event_type,
+                compliance_memo=compliance_memo,
+                created_at=created_at,
+                previous_hash=previous_hash,
             )
-
-            current_hash = hashlib.sha256(
-                hash_payload.encode("utf-8")
-            ).hexdigest()
 
             cursor = connection.execute(
                 """
@@ -117,6 +134,100 @@ class AuditVaultService:
             "created_at": created_at,
             "previous_hash": previous_hash,
             "current_hash": current_hash,
+        }
+
+    def verify_chain(self, max_reported_issues: int = 100) -> dict[str, object]:
+        """Recompute and validate the complete audit chain in one DB snapshot."""
+        if max_reported_issues < 1:
+            raise ValueError("max_reported_issues must be positive")
+
+        with self.database.connection() as connection:
+            connection.execute("BEGIN;")
+            rows = connection.execute(
+                """
+                SELECT
+                    id,
+                    transaction_id,
+                    event_type,
+                    compliance_memo,
+                    created_at,
+                    previous_hash,
+                    current_hash
+                FROM audit_vault
+                ORDER BY id;
+                """
+            ).fetchall()
+
+        issues: list[dict[str, object]] = []
+        issue_count = 0
+        first_invalid_record_id: int | None = None
+        expected_previous_hash = GENESIS_HASH
+
+        def record_issue(record_id: int, code: str, message: str) -> None:
+            nonlocal issue_count, first_invalid_record_id
+            issue_count += 1
+            if first_invalid_record_id is None:
+                first_invalid_record_id = record_id
+            if len(issues) < max_reported_issues:
+                issues.append(
+                    {
+                        "record_id": record_id,
+                        "code": code,
+                        "message": message,
+                    }
+                )
+
+        for row in rows:
+            record_id = int(row["id"])
+            previous_hash = str(row["previous_hash"])
+            current_hash = str(row["current_hash"])
+
+            if previous_hash != expected_previous_hash:
+                record_issue(
+                    record_id,
+                    "broken_link",
+                    "previous_hash does not match the preceding record",
+                )
+            if SHA256_PATTERN.fullmatch(previous_hash) is None:
+                record_issue(
+                    record_id,
+                    "invalid_previous_hash",
+                    "previous_hash is not a lowercase SHA-256 digest",
+                )
+            if SHA256_PATTERN.fullmatch(current_hash) is None:
+                record_issue(
+                    record_id,
+                    "invalid_current_hash",
+                    "current_hash is not a lowercase SHA-256 digest",
+                )
+
+            recomputed_hash = _calculate_audit_hash(
+                transaction_id=str(row["transaction_id"]),
+                event_type=str(row["event_type"]),
+                compliance_memo=str(row["compliance_memo"]),
+                created_at=str(row["created_at"]),
+                previous_hash=previous_hash,
+            )
+            if current_hash != recomputed_hash:
+                record_issue(
+                    record_id,
+                    "hash_mismatch",
+                    "current_hash does not match the stored record contents",
+                )
+
+            expected_previous_hash = current_hash
+
+        return {
+            "is_valid": issue_count == 0,
+            "records_checked": len(rows),
+            "issue_count": issue_count,
+            "issues": issues,
+            "first_invalid_record_id": first_invalid_record_id,
+            "genesis_hash": GENESIS_HASH,
+            "head_hash": (
+                str(rows[-1]["current_hash"]) if rows else GENESIS_HASH
+            ),
+            "checked_at": _utc_now(),
         }
     
     def claim_job(self, transaction_id: str) -> bool:
