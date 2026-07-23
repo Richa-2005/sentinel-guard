@@ -69,6 +69,26 @@ class ReviewReopenRequest(VersionedRequest):
         return normalized
 
 
+class ReviewReturnRequest(VersionedRequest):
+    """Return an analyst recommendation for additional evidence."""
+
+    reason: str = Field(min_length=10, max_length=2000)
+
+    @field_validator("reason", mode="after")
+    @classmethod
+    def normalize_reason(cls, value: str) -> str:
+        normalized = " ".join(value.split())
+        if len(normalized) < 10:
+            raise ValueError("reason must contain at least 10 characters")
+        return normalized
+
+
+class AssignedReviewer(BaseModel):
+    id: int
+    full_name: str
+    email: str
+
+
 class ReviewCaseResponse(BaseModel):
     """Current mutable state of one review case."""
 
@@ -79,7 +99,9 @@ class ReviewCaseResponse(BaseModel):
     status: ReviewStatus
     priority: ReviewPriority
     assigned_to_user_id: int | None
-    current_decision: ReviewDecision | None
+    analyst_recommendation: ReviewDecision | None
+    final_decision: ReviewDecision | None
+    assigned_reviewer: AssignedReviewer | None = None
     version: int
     created_at: datetime
     updated_at: datetime
@@ -132,3 +154,15 @@ class ReviewCasePage(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class ReviewerSummary(BaseModel):
+    user_id: int
+    full_name: str
+    email: str
+    is_active: bool
+    assigned_cases: int
+    recommendations_submitted: int
+    finalized_cases: int
+    agreement_rate: float | None
+    average_resolution_seconds: float | None

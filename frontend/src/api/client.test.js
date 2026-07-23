@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, evaluateTransaction, fetchTransactions } from './client';
+import { ApiError, evaluateTransaction, fetchCurrentUser, fetchTransactions, loginRequest } from './client';
+import { clearSession, writeSession } from '../auth/session';
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  clearSession();
+  vi.restoreAllMocks();
+});
 
 describe('API client', () => {
   it('preserves the existing evaluation payload and response contract', async () => {
@@ -20,5 +24,17 @@ describe('API client', () => {
   it('normalizes connectivity failures', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('network down'));
     await expect(fetchTransactions()).rejects.toEqual(expect.objectContaining({ code: 'NETWORK_ERROR' }));
+  });
+
+  it('logs in publicly and attaches the restored bearer token afterward', async () => {
+    const tokenResponse = { access_token: 'signed-token', expires_in: 1800, user: { id: 1, role: 'analyst' } };
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true, json: async () => tokenResponse });
+    await loginRequest({ email: 'analyst@example.com', password: 'password' });
+    expect(new Headers(fetchMock.mock.calls[0][1].headers).has('Authorization')).toBe(false);
+
+    writeSession(tokenResponse);
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => tokenResponse.user });
+    await fetchCurrentUser();
+    expect(new Headers(fetchMock.mock.calls[1][1].headers).get('Authorization')).toBe('Bearer signed-token');
   });
 });

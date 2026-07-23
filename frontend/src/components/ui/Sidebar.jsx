@@ -1,15 +1,25 @@
-import { Activity, AlertTriangle, Archive, ChevronLeft, ChevronRight, HelpCircle, Landmark, X } from 'lucide-react';
+import { Activity, Archive, ChevronLeft, ChevronRight, Gauge, Landmark, ShieldAlert, Users, X } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
 
-const links = [
-  { to: '/app/live', label: 'Live telemetry', icon: Activity },
-  { to: '/app/incidents', label: 'Incident command', icon: AlertTriangle, count: true },
-  { to: '/app/vault', label: 'Compliance vault', icon: Archive },
+const analystLinks = [
+  { to: '/app/reviews', label: 'Work queue', icon: ShieldAlert, count: true },
+  { to: '/app/transactions', label: 'Transaction stream', icon: Activity },
+  { to: '/app/vault', label: 'Audit vault', icon: Archive },
+];
+const adminLinks = [
+  { to: '/app/operations', label: 'Operations', icon: Gauge },
+  { to: '/app/reviews', label: 'Review control', icon: ShieldAlert, count: true },
+  { to: '/app/model-health', label: 'Model health', icon: Activity },
+  { to: '/app/vault', label: 'Audit vault', icon: Archive },
+  { to: '/app/access', label: 'People & access', icon: Users },
 ];
 
 export default function Sidebar({ mobileOpen, onMobileClose }) {
-  const { blockedTransactions, health, sidebarCollapsed, setSidebarCollapsed, setCommandOpen } = useApp();
+  const { blockedTransactions, sidebarCollapsed, setSidebarCollapsed } = useApp();
+  const { user } = useAuth();
+  const links = user?.role === 'admin' ? adminLinks : analystLinks;
 
   return (
     <>
@@ -22,7 +32,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
         </div>
 
         <nav className="sidebar-nav">
-          <span className="sidebar-label">Workspace</span>
+          <span className="sidebar-label">{user?.role === 'admin' ? 'Control plane' : 'Investigation desk'}</span>
           {links.map(({ to, label, icon: Icon, count }) => (
             <NavLink key={to} to={to} className={({ isActive }) => `nav-item ${isActive ? 'nav-item--active' : ''}`} title={sidebarCollapsed ? label : undefined}>
               <Icon size={17} aria-hidden="true" />
@@ -33,13 +43,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
         </nav>
 
         <div className="sidebar-footer">
-          <button className="nav-item" onClick={() => setCommandOpen(true)} title={sidebarCollapsed ? 'Help and commands' : undefined}>
-            <HelpCircle size={17} /><span className={sidebarCollapsed ? 'sr-only' : ''}>Help & commands</span>
-          </button>
-          <div className="system-chip" title={`Risk core ${health}`}>
-            <span className={`status-dot status-dot--${health}`} />
-            {!sidebarCollapsed && <div><span>Risk core</span><strong>{health === 'online' ? 'Operational' : health === 'checking' ? 'Checking' : 'Unavailable'}</strong></div>}
-          </div>
+          {!sidebarCollapsed && <div className="sidebar-identity"><span>{user?.full_name}</span><small>{user?.role}</small></div>}
           <button className="collapse-control" onClick={() => setSidebarCollapsed((value) => !value)} aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
             {sidebarCollapsed ? <ChevronRight size={16} /> : <><ChevronLeft size={16} /><span>Collapse</span></>}
           </button>

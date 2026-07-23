@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: SecretStr | None = None
     JWT_ALGORITHM: Literal["HS256"] = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=30, gt=0, le=1440)
+    DEMO_MODE: bool = False
 
 
 settings = Settings()

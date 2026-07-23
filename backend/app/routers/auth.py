@@ -1,16 +1,19 @@
 """Authentication and two-role user administration endpoints."""
 
+import secrets
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.auth_dependencies import AdminUser, CurrentUser
+from app.config import settings
 from app.core.db_session import get_db
-from app.core.security import create_access_token
+from app.core.security import create_access_token, hash_password
 from app.models.user import Roles
 from app.schemas.auth import (
     LoginRequest,
+    DemoLoginRequest,
     TokenResponse,
     UserRegister,
     UserResponse,
@@ -21,11 +24,13 @@ from app.services.auth_service import (
     UserAlreadyExistsError,
     authenticate_user,
     create_user,
+    get_user_by_email,
     get_user_by_id,
     list_users,
     set_user_active_status,
     set_user_role,
 )
+from app.services.demo_service import ensure_demo_environment
 
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
@@ -74,6 +79,48 @@ def login(payload: LoginRequest, session: DatabaseSession):
             detail="User account is disabled",
         )
 
+    token, expires_in = create_access_token(user.id)
+    return TokenResponse(
+        access_token=token,
+        expires_in=expires_in,
+        user=UserResponse.model_validate(user),
+    )
+
+
+@router.post("/demo", response_model=TokenResponse)
+def login_demo(payload: DemoLoginRequest, session: DatabaseSession):
+    """Issue a disposable role-specific session only in an explicit demo runtime."""
+    if not settings.DEMO_MODE:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Demo access is disabled")
+
+    identities = {
+        Roles.ANALYST: ("demo.analyst@sentinelguard.dev", "Maya Chen"),
+        Roles.ADMIN: ("demo.admin@sentinelguard.dev", "Arjun Mehta"),
+    }
+    demo_users = {}
+    for role, (email, full_name) in identities.items():
+        demo_user = get_user_by_email(session, email)
+        if demo_user is None:
+            demo_user = create_user(
+                session,
+                email=email,
+                full_name=full_name,
+                plain_password=secrets.token_urlsafe(48),
+                role=role,
+            )
+        elif demo_user.role is not role:
+            demo_user = set_user_role(session, demo_user, role)
+        if not demo_user.is_active:
+            demo_user = set_user_active_status(session, demo_user, True)
+        # Demo identities are button-only. Rotating an unknown password prevents
+        # the regular credential endpoint from becoming an accidental backdoor.
+        demo_user.password_hash = hash_password(secrets.token_urlsafe(48))
+        demo_users[role] = demo_user
+
+    session.commit()
+    user = demo_users[payload.role]
+
+    ensure_demo_environment(session)
     token, expires_in = create_access_token(user.id)
     return TokenResponse(
         access_token=token,

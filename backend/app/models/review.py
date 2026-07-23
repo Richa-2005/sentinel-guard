@@ -27,8 +27,8 @@ def _enum_values(enum_type: type[enum.Enum]) -> list[str]:
 class ReviewStatus(str, enum.Enum):
     OPEN = "open"
     IN_REVIEW = "in_review"
+    AWAITING_APPROVAL = "awaiting_approval"
     RESOLVED = "resolved"
-    ESCALATED = "escalated"
 
 
 class ReviewPriority(str, enum.Enum):
@@ -47,6 +47,9 @@ class ReviewActionType(str, enum.Enum):
     CLAIMED = "claimed"
     ASSIGNED = "assigned"
     DECISION_SUBMITTED = "decision_submitted"
+    RECOMMENDATION_SUBMITTED = "recommendation_submitted"
+    FINAL_DECISION_SUBMITTED = "final_decision_submitted"
+    RETURNED_FOR_EVIDENCE = "returned_for_evidence"
     REOPENED = "reopened"
     OVERRIDDEN = "overridden"
 
@@ -95,13 +98,23 @@ class ReviewCase(Base):
         ForeignKey("users.id", onupdate="RESTRICT", ondelete="SET NULL"),
         nullable=True,
     )
-    current_decision: Mapped[ReviewDecision | None] = mapped_column(
+    analyst_recommendation: Mapped[ReviewDecision | None] = mapped_column(
         Enum(
             ReviewDecision,
             values_callable=_enum_values,
             native_enum=False,
             create_constraint=True,
-            name="current_decision",
+            name="analyst_recommendation",
+        ),
+        nullable=True,
+    )
+    final_decision: Mapped[ReviewDecision | None] = mapped_column(
+        Enum(
+            ReviewDecision,
+            values_callable=_enum_values,
+            native_enum=False,
+            create_constraint=True,
+            name="final_decision",
         ),
         nullable=True,
     )

@@ -18,7 +18,7 @@ function normalizeEvent(rawMessage) {
   return { type: event.type, data: event.data && typeof event.data === 'object' ? event.data : {} };
 }
 
-export default function useWebSocketStream({ onTransaction, onAuditEvent, onReconnect } = {}) {
+export default function useWebSocketStream({ token, onTransaction, onAuditEvent, onReconnect } = {}) {
   const [liveStream, setLiveStream] = useState([]);
   const [connectionStatus, setConnectionStatus] = useState('connecting');
   const [lastEventAt, setLastEventAt] = useState(null);
@@ -70,17 +70,12 @@ export default function useWebSocketStream({ onTransaction, onAuditEvent, onReco
         socket.close(1000, 'Client inactive');
         return;
       }
-      const isReconnect = hasConnectedRef.current;
-      hasConnectedRef.current = true;
-      attemptRef.current = 0;
-      setReconnectAttempt(0);
-      setConnectionStatus('connected');
-      setStreamError('');
-      window.clearInterval(heartbeatRef.current);
-      heartbeatRef.current = window.setInterval(() => {
-        if (socket.readyState === WebSocket.OPEN) socket.send('ping');
-      }, HEARTBEAT_INTERVAL);
-      if (isReconnect) callbacksRef.current.onReconnect?.();
+      if (!token) {
+        setStreamError('Authentication is required for the live channel.');
+        socket.close(1008, 'Authentication required');
+        return;
+      }
+      socket.send(JSON.stringify({ type: 'authenticate', token }));
     };
 
     socket.onmessage = (message) => {
@@ -88,6 +83,20 @@ export default function useWebSocketStream({ onTransaction, onAuditEvent, onReco
       try {
         const event = normalizeEvent(message.data);
         if (!event) return;
+        if (event.type === 'authenticated') {
+          const isReconnect = hasConnectedRef.current;
+          hasConnectedRef.current = true;
+          attemptRef.current = 0;
+          setReconnectAttempt(0);
+          setConnectionStatus('connected');
+          setStreamError('');
+          window.clearInterval(heartbeatRef.current);
+          heartbeatRef.current = window.setInterval(() => {
+            if (socket.readyState === WebSocket.OPEN) socket.send('ping');
+          }, HEARTBEAT_INTERVAL);
+          if (isReconnect) callbacksRef.current.onReconnect?.();
+          return;
+        }
         setLastEventAt(new Date().toISOString());
 
         if (event.type === 'TRANSACTION_STREAM' && event.data.transaction_id) {
@@ -140,7 +149,7 @@ export default function useWebSocketStream({ onTransaction, onAuditEvent, onReco
       const jitter = Math.floor(Math.random() * 250);
       reconnectTimerRef.current = window.setTimeout(connect, baseDelay + jitter);
     };
-  }, []);
+  }, [token]);
 
   useEffect(() => {
     mountedRef.current = true;

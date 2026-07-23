@@ -180,17 +180,18 @@ class ModelMonitoringIntegrationTests(unittest.TestCase):
             created_at = iso_utc(cls.now - timedelta(minutes=30))
             resolved_at = iso_utc(cls.now)
             outcomes = (
-                (case_ids[0], "resolved", "confirmed_fraud", resolved_at),
-                (case_ids[1], "resolved", "false_positive", resolved_at),
-                (case_ids[2], "escalated", "needs_more_information", None),
+                (case_ids[0], "resolved", "confirmed_fraud", "confirmed_fraud", resolved_at),
+                (case_ids[1], "resolved", "confirmed_fraud", "false_positive", resolved_at),
+                (case_ids[2], "awaiting_approval", "needs_more_information", None, None),
             )
-            for case_id, status, decision, resolution in outcomes:
+            for case_id, status, recommendation, final_decision, resolution in outcomes:
                 connection.execute(
                     """
                     UPDATE review_cases
                     SET status = ?,
                         assigned_to_user_id = ?,
-                        current_decision = ?,
+                        analyst_recommendation = ?,
+                        final_decision = ?,
                         version = 2,
                         created_at = ?,
                         updated_at = ?,
@@ -200,7 +201,8 @@ class ModelMonitoringIntegrationTests(unittest.TestCase):
                     (
                         status,
                         cls.admin.id,
-                        decision,
+                        recommendation,
+                        final_decision,
                         created_at,
                         resolved_at,
                         resolution,
@@ -219,13 +221,13 @@ class ModelMonitoringIntegrationTests(unittest.TestCase):
                         reason,
                         case_version,
                         created_at
-                    ) VALUES (?, ?, 'decision_submitted', 'open', ?, ?, ?, 2, ?)
+                    ) VALUES (?, ?, 'recommendation_submitted', 'open', ?, ?, ?, 2, ?)
                     """,
                     (
                         case_id,
                         cls.admin.id,
                         status,
-                        decision,
+                        recommendation,
                         "Controlled monitoring test disposition",
                         resolved_at,
                     ),
@@ -245,12 +247,12 @@ class ModelMonitoringIntegrationTests(unittest.TestCase):
 
         reviews = report["human_review"]
         self.assertEqual(reviews["cases_created"], 4)
-        self.assertEqual(reviews["reviewed"], 3)
+        self.assertEqual(reviews["reviewed"], 2)
         self.assertEqual(reviews["resolved"], 2)
-        self.assertEqual(reviews["escalated"], 1)
+        self.assertEqual(reviews["awaiting_approval"], 1)
         self.assertEqual(reviews["open"], 1)
         self.assertEqual(reviews["case_coverage_rate"], 1.0)
-        self.assertEqual(reviews["decision_completion_rate"], 0.75)
+        self.assertEqual(reviews["decision_completion_rate"], 0.5)
         self.assertEqual(reviews["confirmed_fraud_rate"], 0.5)
         self.assertEqual(reviews["false_positive_rate"], 0.5)
         self.assertAlmostEqual(reviews["average_resolution_seconds"], 1800, delta=0.1)

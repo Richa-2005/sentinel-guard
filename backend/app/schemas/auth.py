@@ -48,6 +48,14 @@ class LoginRequest(NormalizedEmailModel):
     password: SecretStr = Field(min_length=1, max_length=128)
 
 
+class DemoLoginRequest(BaseModel):
+    """Select one of the two disposable identities in demo deployments."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    role: Roles
+
+
 class UserResponse(BaseModel):
     """Safe public user representation without credential material."""
 

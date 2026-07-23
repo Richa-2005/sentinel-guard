@@ -74,3 +74,5 @@ def require_roles(*allowed_roles: Roles) -> Callable[..., User]:
 
 require_admin = require_roles(Roles.ADMIN)
 AdminUser = Annotated[User, Depends(require_admin)]
+require_analyst = require_roles(Roles.ANALYST)
+AnalystUser = Annotated[User, Depends(require_analyst)]

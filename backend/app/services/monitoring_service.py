@@ -124,15 +124,16 @@ class ModelMonitoringService:
                     COUNT(rc.id) AS case_count,
                     SUM(CASE WHEN rc.status = 'open' THEN 1 ELSE 0 END) AS open_count,
                     SUM(CASE WHEN rc.status = 'in_review' THEN 1 ELSE 0 END) AS in_review_count,
-                    SUM(CASE WHEN rc.status = 'escalated' THEN 1 ELSE 0 END) AS escalated_count,
+                    SUM(CASE WHEN rc.status = 'awaiting_approval' THEN 1 ELSE 0 END)
+                        AS awaiting_approval_count,
                     SUM(CASE WHEN rc.status = 'resolved' THEN 1 ELSE 0 END) AS resolved_count,
-                    SUM(CASE WHEN rc.current_decision IS NOT NULL THEN 1 ELSE 0 END)
+                    SUM(CASE WHEN rc.final_decision IS NOT NULL THEN 1 ELSE 0 END)
                         AS reviewed_count,
-                    SUM(CASE WHEN rc.current_decision = 'confirmed_fraud' THEN 1 ELSE 0 END)
+                    SUM(CASE WHEN rc.final_decision = 'confirmed_fraud' THEN 1 ELSE 0 END)
                         AS confirmed_fraud_count,
-                    SUM(CASE WHEN rc.current_decision = 'false_positive' THEN 1 ELSE 0 END)
+                    SUM(CASE WHEN rc.final_decision = 'false_positive' THEN 1 ELSE 0 END)
                         AS false_positive_count,
-                    SUM(CASE WHEN rc.current_decision = 'needs_more_information' THEN 1 ELSE 0 END)
+                    SUM(CASE WHEN rc.final_decision = 'needs_more_information' THEN 1 ELSE 0 END)
                         AS needs_more_information_count
                 FROM review_cases AS rc
                 JOIN transactions_ledger AS tx
@@ -236,7 +237,7 @@ class ModelMonitoringService:
                 "reviewed": reviewed_count,
                 "open": int(review_row["open_count"] or 0),
                 "in_review": int(review_row["in_review_count"] or 0),
-                "escalated": int(review_row["escalated_count"] or 0),
+                "awaiting_approval": int(review_row["awaiting_approval_count"] or 0),
                 "resolved": int(review_row["resolved_count"] or 0),
                 "confirmed_fraud": confirmed_count,
                 "false_positive": false_positive_count,

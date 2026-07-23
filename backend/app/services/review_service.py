@@ -17,6 +17,7 @@ from app.models.review import (
     ReviewStatus,
 )
 from app.models.user import User
+from app.core.config import SystemRiskConfig
 
 
 class ReviewNotFoundError(LookupError):
@@ -42,11 +43,9 @@ def ensure_review_case_for_blocked_transaction(
     risk_score: float,
 ) -> int:
     """Create one case and initial action, or return the existing case ID."""
-    priority = (
-        ReviewPriority.CRITICAL.value
-        if risk_score >= 0.9
-        else ReviewPriority.HIGH.value
-    )
+    threshold = SystemRiskConfig.CALIBRATED_THRESHOLD
+    critical_boundary = threshold + ((1.0 - threshold) * 0.65)
+    priority = ReviewPriority.CRITICAL.value if risk_score >= critical_boundary else ReviewPriority.HIGH.value
     cursor = connection.execute(
         """
         INSERT OR IGNORE INTO review_cases (
@@ -178,7 +177,8 @@ def _transition(
     reason: str,
     decision: ReviewDecision | None = None,
     assigned_to_user_id: int | None = None,
-    current_decision: ReviewDecision | None = None,
+    analyst_recommendation: ReviewDecision | None = None,
+    final_decision: ReviewDecision | None = None,
     resolved_at: datetime | None = None,
 ) -> ReviewCase:
     if review_case.version != expected_version:
@@ -198,7 +198,8 @@ def _transition(
         .values(
             status=resulting_status,
             assigned_to_user_id=assigned_to_user_id,
-            current_decision=current_decision,
+            analyst_recommendation=analyst_recommendation,
+            final_decision=final_decision,
             version=new_version,
             updated_at=now,
             resolved_at=resolved_at,
@@ -266,8 +267,10 @@ def assign_case(
     expected_version: int,
     reason: str,
 ) -> ReviewCase:
-    if review_case.status is ReviewStatus.RESOLVED:
-        raise ReviewTransitionError("Resolved cases must be reopened before assignment")
+    if review_case.status in {ReviewStatus.AWAITING_APPROVAL, ReviewStatus.RESOLVED}:
+        raise ReviewTransitionError(
+            "Cases awaiting approval or already resolved cannot be assigned"
+        )
     assignee = session.get(User, assigned_to_user_id)
     if assignee is None or not assignee.is_active:
         raise ReviewerNotFoundError("Active reviewer not found")
@@ -297,22 +300,17 @@ def submit_decision(
     if review_case.assigned_to_user_id != reviewer.id:
         raise ReviewTransitionError("Case must be assigned to the acting reviewer")
 
-    is_escalated = decision is ReviewDecision.NEEDS_MORE_INFORMATION
-    resulting_status = (
-        ReviewStatus.ESCALATED if is_escalated else ReviewStatus.RESOLVED
-    )
     return _transition(
         session,
         review_case=review_case,
         expected_version=expected_version,
         actor_user_id=reviewer.id,
-        action_type=ReviewActionType.DECISION_SUBMITTED,
-        resulting_status=resulting_status,
+        action_type=ReviewActionType.RECOMMENDATION_SUBMITTED,
+        resulting_status=ReviewStatus.AWAITING_APPROVAL,
         reason=reason,
         decision=decision,
         assigned_to_user_id=reviewer.id,
-        current_decision=decision,
-        resolved_at=None if is_escalated else datetime.now(timezone.utc),
+        analyst_recommendation=decision,
     )
 
 
@@ -324,8 +322,8 @@ def reopen_case(
     expected_version: int,
     reason: str,
 ) -> ReviewCase:
-    if review_case.status not in {ReviewStatus.RESOLVED, ReviewStatus.ESCALATED}:
-        raise ReviewTransitionError("Only resolved or escalated cases can be reopened")
+    if review_case.status is not ReviewStatus.RESOLVED:
+        raise ReviewTransitionError("Only resolved cases can be reopened")
     return _transition(
         session,
         review_case=review_case,
@@ -334,6 +332,64 @@ def reopen_case(
         action_type=ReviewActionType.REOPENED,
         resulting_status=ReviewStatus.OPEN,
         reason=reason,
+        analyst_recommendation=None,
+        final_decision=None,
+    )
+
+
+def finalize_decision(
+    session: Session,
+    *,
+    review_case: ReviewCase,
+    admin: User,
+    expected_version: int,
+    decision: ReviewDecision,
+    reason: str,
+) -> ReviewCase:
+    """Record the administrator's final decision after analyst recommendation."""
+    if review_case.status is not ReviewStatus.AWAITING_APPROVAL:
+        raise ReviewTransitionError("Only recommendations awaiting approval can be finalized")
+    if decision is ReviewDecision.NEEDS_MORE_INFORMATION:
+        raise ReviewTransitionError(
+            "Return the case for more evidence instead of resolving it"
+        )
+    return _transition(
+        session,
+        review_case=review_case,
+        expected_version=expected_version,
+        actor_user_id=admin.id,
+        action_type=ReviewActionType.FINAL_DECISION_SUBMITTED,
+        resulting_status=ReviewStatus.RESOLVED,
+        reason=reason,
+        decision=decision,
+        assigned_to_user_id=review_case.assigned_to_user_id,
+        analyst_recommendation=review_case.analyst_recommendation,
+        final_decision=decision,
+        resolved_at=datetime.now(timezone.utc),
+    )
+
+
+def return_for_evidence(
+    session: Session,
+    *,
+    review_case: ReviewCase,
+    admin: User,
+    expected_version: int,
+    reason: str,
+) -> ReviewCase:
+    """Return an analyst recommendation while retaining case ownership."""
+    if review_case.status is not ReviewStatus.AWAITING_APPROVAL:
+        raise ReviewTransitionError("Only recommendations awaiting approval can be returned")
+    return _transition(
+        session,
+        review_case=review_case,
+        expected_version=expected_version,
+        actor_user_id=admin.id,
+        action_type=ReviewActionType.RETURNED_FOR_EVIDENCE,
+        resulting_status=ReviewStatus.IN_REVIEW,
+        reason=reason,
+        assigned_to_user_id=review_case.assigned_to_user_id,
+        analyst_recommendation=None,
     )
 
 
@@ -346,22 +402,63 @@ def override_decision(
     decision: ReviewDecision,
     reason: str,
 ) -> ReviewCase:
-    if review_case.status not in {ReviewStatus.RESOLVED, ReviewStatus.ESCALATED}:
-        raise ReviewTransitionError("Only completed decisions can be overridden")
-    is_escalated = decision is ReviewDecision.NEEDS_MORE_INFORMATION
-    resulting_status = (
-        ReviewStatus.ESCALATED if is_escalated else ReviewStatus.RESOLVED
-    )
+    if review_case.status is not ReviewStatus.RESOLVED:
+        raise ReviewTransitionError("Only resolved decisions can be corrected")
     return _transition(
         session,
         review_case=review_case,
         expected_version=expected_version,
         actor_user_id=admin.id,
         action_type=ReviewActionType.OVERRIDDEN,
-        resulting_status=resulting_status,
+        resulting_status=ReviewStatus.RESOLVED,
         reason=reason,
         decision=decision,
-        assigned_to_user_id=admin.id,
-        current_decision=decision,
-        resolved_at=None if is_escalated else datetime.now(timezone.utc),
+        assigned_to_user_id=review_case.assigned_to_user_id,
+        analyst_recommendation=review_case.analyst_recommendation,
+        final_decision=decision,
+        resolved_at=datetime.now(timezone.utc),
     )
+
+
+def list_reviewer_summaries(session: Session) -> list[dict[str, object]]:
+    """Return administrator-facing workload and outcome summaries per analyst."""
+    rows = session.execute(text("""
+        SELECT
+            users.id AS user_id,
+            users.full_name,
+            users.email,
+            users.is_active,
+            COUNT(DISTINCT review_cases.id) AS assigned_cases,
+            SUM(CASE WHEN review_cases.analyst_recommendation IS NOT NULL THEN 1 ELSE 0 END)
+                AS recommendations_submitted,
+            SUM(CASE WHEN review_cases.final_decision IS NOT NULL THEN 1 ELSE 0 END)
+                AS finalized_cases,
+            SUM(CASE
+                WHEN review_cases.final_decision IS NOT NULL
+                 AND review_cases.final_decision = review_cases.analyst_recommendation
+                THEN 1 ELSE 0 END) AS agreements,
+            AVG(CASE
+                WHEN review_cases.resolved_at IS NOT NULL
+                THEN (julianday(review_cases.resolved_at) - julianday(review_cases.created_at)) * 86400.0
+                ELSE NULL END) AS average_resolution_seconds
+        FROM users
+        LEFT JOIN review_cases ON review_cases.assigned_to_user_id = users.id
+        WHERE users.role = 'analyst'
+        GROUP BY users.id, users.full_name, users.email, users.is_active
+        ORDER BY users.full_name;
+    """)).mappings().all()
+    summaries = []
+    for row in rows:
+        finalized = int(row["finalized_cases"] or 0)
+        summaries.append({
+            "user_id": int(row["user_id"]),
+            "full_name": str(row["full_name"]),
+            "email": str(row["email"]),
+            "is_active": bool(row["is_active"]),
+            "assigned_cases": int(row["assigned_cases"] or 0),
+            "recommendations_submitted": int(row["recommendations_submitted"] or 0),
+            "finalized_cases": finalized,
+            "agreement_rate": round(int(row["agreements"] or 0) / finalized, 6) if finalized else None,
+            "average_resolution_seconds": round(float(row["average_resolution_seconds"]), 3) if row["average_resolution_seconds"] is not None else None,
+        })
+    return summaries

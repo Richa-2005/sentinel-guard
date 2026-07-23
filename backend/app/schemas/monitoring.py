@@ -41,7 +41,7 @@ class HumanReviewMetrics(BaseModel):
     reviewed: int = Field(ge=0)
     open: int = Field(ge=0)
     in_review: int = Field(ge=0)
-    escalated: int = Field(ge=0)
+    awaiting_approval: int = Field(ge=0)
     resolved: int = Field(ge=0)
     confirmed_fraud: int = Field(ge=0)
     false_positive: int = Field(ge=0)

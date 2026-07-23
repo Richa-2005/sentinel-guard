@@ -129,7 +129,7 @@ class HumanReviewIntegrationTests(unittest.TestCase):
         return {"Authorization": f"Bearer {token}"}
 
     @classmethod
-    def create_blocked_case(cls, transaction_id: str, risk_score: float = 0.95) -> int:
+    def create_blocked_case(cls, transaction_id: str, risk_score: float = 0.99) -> int:
         connection = sqlite3.connect(cls.database_path)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys=ON")
@@ -179,7 +179,7 @@ class HumanReviewIntegrationTests(unittest.TestCase):
         self.assertEqual(detail["status"], "open")
         self.assertEqual(detail["priority"], "critical")
         self.assertEqual(detail["version"], 1)
-        self.assertEqual(detail["transaction"]["ensemble_risk_score"], 0.95)
+        self.assertEqual(detail["transaction"]["ensemble_risk_score"], 0.99)
         self.assertTrue(detail["transaction"]["is_blocked"])
         self.assertEqual(len(detail["actions"]), 1)
         self.assertEqual(detail["actions"][0]["action_type"], "created")
@@ -202,7 +202,7 @@ class HumanReviewIntegrationTests(unittest.TestCase):
         self.assertEqual(stale_claim.status_code, 409)
 
         wrong_reviewer = self.client.post(
-            f"/api/v1/reviews/{case_id}/decision",
+            f"/api/v1/reviews/{case_id}/recommendation",
             json={
                 "expected_version": 2,
                 "decision": "false_positive",
@@ -213,7 +213,7 @@ class HumanReviewIntegrationTests(unittest.TestCase):
         self.assertEqual(wrong_reviewer.status_code, 409)
 
         decided = self.client.post(
-            f"/api/v1/reviews/{case_id}/decision",
+            f"/api/v1/reviews/{case_id}/recommendation",
             json={
                 "expected_version": 2,
                 "decision": "false_positive",
@@ -222,8 +222,22 @@ class HumanReviewIntegrationTests(unittest.TestCase):
             headers=self.analyst_headers,
         )
         self.assertEqual(decided.status_code, 200, decided.text)
-        self.assertEqual(decided.json()["status"], "resolved")
+        self.assertEqual(decided.json()["status"], "awaiting_approval")
         self.assertEqual(decided.json()["version"], 3)
+
+        finalized = self.client.post(
+            f"/api/v1/reviews/{case_id}/finalize",
+            json={
+                "expected_version": 3,
+                "decision": "false_positive",
+                "reason": "Administrator approved the evidence-backed recommendation.",
+            },
+            headers=self.admin_headers,
+        )
+        self.assertEqual(finalized.status_code, 200, finalized.text)
+        self.assertEqual(finalized.json()["status"], "resolved")
+        self.assertEqual(finalized.json()["final_decision"], "false_positive")
+        self.assertEqual(finalized.json()["assigned_to_user_id"], self.analyst.id)
 
         connection = sqlite3.connect(self.database_path)
         try:
@@ -243,12 +257,12 @@ class HumanReviewIntegrationTests(unittest.TestCase):
                 "SELECT is_blocked, ensemble_risk_score FROM transactions_ledger "
                 "WHERE transaction_id = 'review-decision'"
             ).fetchone()
-            self.assertEqual(original, (1, 0.95))
+            self.assertEqual(original, (1, 0.99))
         finally:
             connection.close()
 
-    def test_admin_assignment_escalation_and_reopen(self) -> None:
-        case_id = self.create_blocked_case("review-escalation", risk_score=0.8)
+    def test_admin_assignment_recommendation_and_return(self) -> None:
+        case_id = self.create_blocked_case("review-return", risk_score=0.98)
 
         forbidden = self.client.post(
             f"/api/v1/reviews/{case_id}/assign",
@@ -273,8 +287,8 @@ class HumanReviewIntegrationTests(unittest.TestCase):
         self.assertEqual(assigned.status_code, 200, assigned.text)
         self.assertEqual(assigned.json()["priority"], "high")
 
-        escalated = self.client.post(
-            f"/api/v1/reviews/{case_id}/decision",
+        recommended = self.client.post(
+            f"/api/v1/reviews/{case_id}/recommendation",
             json={
                 "expected_version": 2,
                 "decision": "needs_more_information",
@@ -282,31 +296,32 @@ class HumanReviewIntegrationTests(unittest.TestCase):
             },
             headers=self.analyst_headers,
         )
-        self.assertEqual(escalated.status_code, 200, escalated.text)
-        self.assertEqual(escalated.json()["status"], "escalated")
+        self.assertEqual(recommended.status_code, 200, recommended.text)
+        self.assertEqual(recommended.json()["status"], "awaiting_approval")
 
         analyst_reopen = self.client.post(
-            f"/api/v1/reviews/{case_id}/reopen",
+            f"/api/v1/reviews/{case_id}/return",
             json={
                 "expected_version": 3,
-                "reason": "Trying to reopen without administrator permission.",
+                "reason": "Trying to return without administrator permission.",
             },
             headers=self.analyst_headers,
         )
         self.assertEqual(analyst_reopen.status_code, 403)
 
-        reopened = self.client.post(
-            f"/api/v1/reviews/{case_id}/reopen",
+        returned = self.client.post(
+            f"/api/v1/reviews/{case_id}/return",
             json={
                 "expected_version": 3,
                 "reason": "Additional merchant evidence is now available for review.",
             },
             headers=self.admin_headers,
         )
-        self.assertEqual(reopened.status_code, 200, reopened.text)
-        self.assertEqual(reopened.json()["status"], "open")
-        self.assertIsNone(reopened.json()["current_decision"])
-        self.assertEqual(reopened.json()["version"], 4)
+        self.assertEqual(returned.status_code, 200, returned.text)
+        self.assertEqual(returned.json()["status"], "in_review")
+        self.assertIsNone(returned.json()["analyst_recommendation"])
+        self.assertEqual(returned.json()["assigned_to_user_id"], self.analyst.id)
+        self.assertEqual(returned.json()["version"], 4)
 
     def test_admin_override_appends_instead_of_replacing(self) -> None:
         case_id = self.create_blocked_case("review-override")
@@ -316,7 +331,7 @@ class HumanReviewIntegrationTests(unittest.TestCase):
             headers=self.analyst_headers,
         )
         self.client.post(
-            f"/api/v1/reviews/{case_id}/decision",
+            f"/api/v1/reviews/{case_id}/recommendation",
             json={
                 "expected_version": 2,
                 "decision": "confirmed_fraud",
@@ -325,17 +340,28 @@ class HumanReviewIntegrationTests(unittest.TestCase):
             headers=self.analyst_headers,
         )
 
+        finalized = self.client.post(
+            f"/api/v1/reviews/{case_id}/finalize",
+            json={
+                "expected_version": 3,
+                "decision": "confirmed_fraud",
+                "reason": "Administrator approved the analyst recommendation.",
+            },
+            headers=self.admin_headers,
+        )
+        self.assertEqual(finalized.status_code, 200, finalized.text)
+
         overridden = self.client.post(
             f"/api/v1/reviews/{case_id}/override",
             json={
-                "expected_version": 3,
+                "expected_version": 4,
                 "decision": "false_positive",
                 "reason": "Administrator verified a controlled internal test transaction.",
             },
             headers=self.admin_headers,
         )
         self.assertEqual(overridden.status_code, 200, overridden.text)
-        self.assertEqual(overridden.json()["current_decision"], "false_positive")
+        self.assertEqual(overridden.json()["final_decision"], "false_positive")
 
         detail = self.client.get(
             f"/api/v1/reviews/{case_id}",
@@ -346,7 +372,7 @@ class HumanReviewIntegrationTests(unittest.TestCase):
             for action in detail["actions"]
             if action["decision"] is not None
         ]
-        self.assertEqual(decisions, ["confirmed_fraud", "false_positive"])
+        self.assertEqual(decisions, ["confirmed_fraud", "confirmed_fraud", "false_positive"])
         self.assertEqual(detail["actions"][-1]["action_type"], "overridden")
 
     def test_queue_filters_pagination_and_reason_validation(self) -> None:
@@ -361,7 +387,7 @@ class HumanReviewIntegrationTests(unittest.TestCase):
         self.assertGreaterEqual(queue.json()["total"], 1)
 
         invalid_reason = self.client.post(
-            f"/api/v1/reviews/{queue.json()['items'][0]['id']}/decision",
+            f"/api/v1/reviews/{queue.json()['items'][0]['id']}/recommendation",
             json={
                 "expected_version": 1,
                 "decision": "confirmed_fraud",

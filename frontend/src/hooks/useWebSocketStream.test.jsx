@@ -52,22 +52,25 @@ describe('useWebSocketStream', () => {
 
   it('reuses an in-flight handshake during the Strict Mode effect replay', () => {
     const wrapper = ({ children }) => <StrictMode>{children}</StrictMode>;
-    const { result } = renderHook(() => useWebSocketStream(), { wrapper });
+    const { result } = renderHook(() => useWebSocketStream({ token: 'test-token' }), { wrapper });
 
     expect(MockWebSocket.instances).toHaveLength(1);
     expect(MockWebSocket.instances[0].readyState).toBe(MockWebSocket.CONNECTING);
 
     act(() => MockWebSocket.instances[0].open());
+    act(() => MockWebSocket.instances[0].receive({ type: 'authenticated' }));
     expect(result.current.connectionStatus).toBe('connected');
   });
 
   it('streams transactions and forwards correlated audit completion events', async () => {
     const onTransaction = vi.fn();
     const onAuditEvent = vi.fn();
-    const { result } = renderHook(() => useWebSocketStream({ onTransaction, onAuditEvent }));
+    const { result } = renderHook(() => useWebSocketStream({ token: 'test-token', onTransaction, onAuditEvent }));
     const socket = MockWebSocket.instances[0];
 
     act(() => socket.open());
+    expect(socket.send).toHaveBeenCalledWith(JSON.stringify({ type: 'authenticate', token: 'test-token' }));
+    act(() => socket.receive({ type: 'authenticated' }));
     await waitFor(() => expect(result.current.connectionStatus).toBe('connected'));
 
     act(() => socket.receive({
@@ -95,9 +98,10 @@ describe('useWebSocketStream', () => {
   });
 
   it('ignores malformed messages without terminating the channel', () => {
-    const { result } = renderHook(() => useWebSocketStream());
+    const { result } = renderHook(() => useWebSocketStream({ token: 'test-token' }));
     const socket = MockWebSocket.instances[0];
     act(() => socket.open());
+    act(() => socket.receive({ type: 'authenticated' }));
     act(() => socket.onmessage?.({ data: '{broken-json' }));
     expect(result.current.connectionStatus).toBe('connected');
     expect(result.current.streamError).toMatch(/malformed/i);

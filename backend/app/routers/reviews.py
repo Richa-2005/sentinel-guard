@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.core.auth_dependencies import AdminUser, CurrentUser
+from app.core.auth_dependencies import AdminUser, AnalystUser, CurrentUser
 from app.core.db_session import get_db
 from app.models.review import ReviewPriority, ReviewStatus
 from app.schemas.review import (
@@ -16,6 +16,8 @@ from app.schemas.review import (
     ReviewClaimRequest,
     ReviewDecisionRequest,
     ReviewReopenRequest,
+    ReviewReturnRequest,
+    ReviewerSummary,
 )
 from app.services.review_service import (
     ReviewConflictError,
@@ -24,18 +26,35 @@ from app.services.review_service import (
     ReviewTransitionError,
     assign_case,
     claim_case,
+    finalize_decision,
     get_case_actions,
     get_review_case,
     get_transaction_context,
     list_review_cases,
+    list_reviewer_summaries,
     override_decision,
     reopen_case,
+    return_for_evidence,
     submit_decision,
 )
 
 
 router = APIRouter(prefix="/api/v1/reviews", tags=["Human Review"])
 DatabaseSession = Annotated[Session, Depends(get_db)]
+
+
+def _serialize_case(session: Session, review_case) -> ReviewCaseResponse:
+    data = ReviewCaseResponse.model_validate(review_case).model_dump()
+    if review_case.assigned_to_user_id is not None:
+        from app.models.user import User
+        reviewer = session.get(User, review_case.assigned_to_user_id)
+        if reviewer is not None:
+            data["assigned_reviewer"] = {
+                "id": reviewer.id,
+                "full_name": reviewer.full_name,
+                "email": reviewer.email,
+            }
+    return ReviewCaseResponse(**data)
 
 
 def _raise_review_http_error(error: Exception) -> None:
@@ -67,7 +86,21 @@ def read_review_queue(
         limit=limit,
         offset=offset,
     )
-    return ReviewCasePage(items=cases, total=total, limit=limit, offset=offset)
+    return ReviewCasePage(
+        items=[_serialize_case(session, item) for item in cases],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get("/reviewers/summary", response_model=list[ReviewerSummary])
+def read_reviewer_summaries(
+    _admin: AdminUser,
+    session: DatabaseSession,
+):
+    """Return per-analyst workload and outcome summaries."""
+    return list_reviewer_summaries(session)
 
 
 @router.get("/{case_id}", response_model=ReviewCaseDetail)
@@ -82,7 +115,7 @@ def read_review_case(
     except ReviewNotFoundError as exc:
         _raise_review_http_error(exc)
 
-    case_data = ReviewCaseResponse.model_validate(review_case).model_dump()
+    case_data = _serialize_case(session, review_case).model_dump()
     return ReviewCaseDetail(
         **case_data,
         transaction=get_transaction_context(session, review_case.transaction_id),
@@ -94,31 +127,32 @@ def read_review_case(
 def claim_review_case(
     case_id: int,
     payload: ReviewClaimRequest,
-    current_user: CurrentUser,
+    current_user: AnalystUser,
     session: DatabaseSession,
 ):
     """Atomically claim one currently open case."""
     try:
-        return claim_case(
+        result = claim_case(
             session,
             review_case=get_review_case(session, case_id),
             reviewer=current_user,
             expected_version=payload.expected_version,
         )
+        return _serialize_case(session, result)
     except (ReviewNotFoundError, ReviewTransitionError, ReviewConflictError) as exc:
         _raise_review_http_error(exc)
 
 
-@router.post("/{case_id}/decision", response_model=ReviewCaseResponse)
+@router.post("/{case_id}/recommendation", response_model=ReviewCaseResponse)
 def decide_review_case(
     case_id: int,
     payload: ReviewDecisionRequest,
-    current_user: CurrentUser,
+    current_user: AnalystUser,
     session: DatabaseSession,
 ):
     """Append a decision by the reviewer currently assigned to the case."""
     try:
-        return submit_decision(
+        result = submit_decision(
             session,
             review_case=get_review_case(session, case_id),
             reviewer=current_user,
@@ -126,6 +160,7 @@ def decide_review_case(
             decision=payload.decision,
             reason=payload.reason,
         )
+        return _serialize_case(session, result)
     except (ReviewNotFoundError, ReviewTransitionError, ReviewConflictError) as exc:
         _raise_review_http_error(exc)
 
@@ -139,7 +174,7 @@ def assign_review_case(
 ):
     """Assign or reassign a non-resolved case as an administrator."""
     try:
-        return assign_case(
+        result = assign_case(
             session,
             review_case=get_review_case(session, case_id),
             admin=admin,
@@ -147,6 +182,7 @@ def assign_review_case(
             expected_version=payload.expected_version,
             reason=payload.reason,
         )
+        return _serialize_case(session, result)
     except (
         ReviewNotFoundError,
         ReviewerNotFoundError,
@@ -163,15 +199,16 @@ def reopen_review_case(
     admin: AdminUser,
     session: DatabaseSession,
 ):
-    """Reopen a resolved or escalated case as an administrator."""
+    """Reopen a resolved case as an administrator."""
     try:
-        return reopen_case(
+        result = reopen_case(
             session,
             review_case=get_review_case(session, case_id),
             admin=admin,
             expected_version=payload.expected_version,
             reason=payload.reason,
         )
+        return _serialize_case(session, result)
     except (ReviewNotFoundError, ReviewTransitionError, ReviewConflictError) as exc:
         _raise_review_http_error(exc)
 
@@ -185,7 +222,7 @@ def override_review_decision(
 ):
     """Append an administrator decision without rewriting prior history."""
     try:
-        return override_decision(
+        result = override_decision(
             session,
             review_case=get_review_case(session, case_id),
             admin=admin,
@@ -193,5 +230,49 @@ def override_review_decision(
             decision=payload.decision,
             reason=payload.reason,
         )
+        return _serialize_case(session, result)
+    except (ReviewNotFoundError, ReviewTransitionError, ReviewConflictError) as exc:
+        _raise_review_http_error(exc)
+
+
+@router.post("/{case_id}/finalize", response_model=ReviewCaseResponse)
+def finalize_review_decision(
+    case_id: int,
+    payload: ReviewDecisionRequest,
+    admin: AdminUser,
+    session: DatabaseSession,
+):
+    """Record the administrator's attributable final decision."""
+    try:
+        result = finalize_decision(
+            session,
+            review_case=get_review_case(session, case_id),
+            admin=admin,
+            expected_version=payload.expected_version,
+            decision=payload.decision,
+            reason=payload.reason,
+        )
+        return _serialize_case(session, result)
+    except (ReviewNotFoundError, ReviewTransitionError, ReviewConflictError) as exc:
+        _raise_review_http_error(exc)
+
+
+@router.post("/{case_id}/return", response_model=ReviewCaseResponse)
+def return_review_for_evidence(
+    case_id: int,
+    payload: ReviewReturnRequest,
+    admin: AdminUser,
+    session: DatabaseSession,
+):
+    """Return a recommendation to its assigned analyst with instructions."""
+    try:
+        result = return_for_evidence(
+            session,
+            review_case=get_review_case(session, case_id),
+            admin=admin,
+            expected_version=payload.expected_version,
+            reason=payload.reason,
+        )
+        return _serialize_case(session, result)
     except (ReviewNotFoundError, ReviewTransitionError, ReviewConflictError) as exc:
         _raise_review_http_error(exc)

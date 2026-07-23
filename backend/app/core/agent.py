@@ -176,6 +176,16 @@ def legalVerdict(state : ComplianceGraphState) -> ComplianceGraphState:
         compiled_report = response.json().get("response")
         if not compiled_report:
             raise RuntimeError("LLM returned an empty compliance memo")
+        required_sections = (
+            "EXECUTIVE RISK VERDICT",
+            "TECHNICAL SPECIFICATION PROFILE",
+            "REGULATORY COMPLIANCE CROSS-REFERENCE",
+            "MITIGATION & ACTIONABLE DEFENSE ROADMAP",
+        )
+        if len(compiled_report.strip()) < 400 or any(
+            section not in compiled_report.upper() for section in required_sections
+        ):
+            raise RuntimeError("Generated compliance memo did not satisfy the required report structure")
 
     except requests.RequestException as error:
         raise RuntimeError(

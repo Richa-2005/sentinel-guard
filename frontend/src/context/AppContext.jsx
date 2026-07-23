@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { fetchAuditJobs, fetchAudits, fetchMerchants, fetchTransactions, pingBackend } from '../api/client';
+import { evaluateTransaction, fetchAuditJobs, fetchAudits, fetchMerchants, fetchTransactions, pingBackend } from '../api/client';
 import useWebSocketStream from '../hooks/useWebSocketStream';
+import { useAuth } from './AuthContext';
 
 const AppContext = createContext(null);
 const MAX_TRANSACTIONS = 200;
@@ -71,8 +72,10 @@ function auditStatusFromJobs(jobs) {
 }
 
 export function AppProvider({ children }) {
+  const { accessToken, user } = useAuth();
   const [transactions, setTransactions] = useState([]);
   const [audits, setAudits] = useState([]);
+  const [auditJobs, setAuditJobs] = useState([]);
   const [auditStatuses, setAuditStatuses] = useState({});
   const [merchants, setMerchants] = useState({});
   const [health, setHealth] = useState('checking');
@@ -81,11 +84,16 @@ export function AppProvider({ children }) {
   const [notice, setNotice] = useState(null);
   const [auditSearch, setAuditSearch] = useState('');
   const [selectedAuditId, setSelectedAuditId] = useState(null);
-  const [commandOpen, setCommandOpen] = useState(false);
+  const [demoControlOpen, setDemoControlOpen] = useState(false);
+  const [demoStatus, setDemoStatus] = useState('stopped');
+  const [demoScenario, setDemoScenario] = useState('mixed');
+  const [demoEvents, setDemoEvents] = useState([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => localStorage.getItem('sentinel-sidebar-collapsed') === 'true'
   );
   const initialHydrateStartedRef = useRef(false);
+  const demoTimerRef = useRef(null);
+  const demoBusyRef = useRef(false);
 
   const checkHealth = useCallback(async () => {
     const ok = await pingBackend();
@@ -101,6 +109,7 @@ export function AppProvider({ children }) {
   }, []);
 
   const applyAuditJobs = useCallback((jobs) => {
+    setAuditJobs(jobs || []);
     setAuditStatuses((previous) => ({ ...previous, ...auditStatusFromJobs(jobs || []) }));
     return jobs || [];
   }, []);
@@ -129,6 +138,58 @@ export function AppProvider({ children }) {
       },
     }));
   }, []);
+
+  const submitDemoTransaction = useCallback(async (payload, source = 'manual') => {
+    if (demoBusyRef.current) return null;
+    demoBusyRef.current = true;
+    try {
+      const transaction_id = payload.transaction_id || `guided-${crypto.randomUUID()}`;
+      const requestPayload = { ...payload, transaction_id, amount_paise: Number(payload.amount_paise) };
+      const result = await evaluateTransaction(requestPayload);
+      const entry = addTransaction({ ...requestPayload, ...result, timestamp: new Date().toISOString() });
+      if (result.is_blocked) queueAudit(transaction_id);
+      setDemoEvents((previous) => [{
+        id: transaction_id,
+        source,
+        blocked: Boolean(result.is_blocked),
+        score: Number(result.ensemble_risk_score || 0),
+        timestamp: new Date().toISOString(),
+      }, ...previous].slice(0, 8));
+      return entry;
+    } catch (error) {
+      setDemoEvents((previous) => [{ id: crypto.randomUUID(), source, error: error.message, timestamp: new Date().toISOString() }, ...previous].slice(0, 8));
+      return null;
+    } finally {
+      demoBusyRef.current = false;
+    }
+  }, [addTransaction, queueAudit]);
+
+  const stopDemo = useCallback(() => {
+    window.clearInterval(demoTimerRef.current);
+    demoTimerRef.current = null;
+    setDemoStatus('stopped');
+  }, []);
+
+  const startDemo = useCallback((scenario = 'mixed') => {
+    stopDemo();
+    setDemoScenario(scenario);
+    setDemoStatus('running');
+    let sequence = 0;
+    const emit = () => {
+      sequence += 1;
+      const fraud = scenario === 'fraud_burst' || (scenario === 'mixed' && sequence % 5 === 0);
+      submitDemoTransaction({
+        amount_paise: fraud ? 8700 + (sequence % 5) * 900 : 1800 + sequence * 137,
+        card_id: fraud ? `guided_risk_card_${sequence % 8}` : `guided_safe_card_${sequence % 4}`,
+        device_id: fraud ? 'guided_device_ring_01' : `guided_trusted_device_${sequence % 5}`,
+        merchant_id: fraud ? `risk_merchant_${sequence}` : ['5411', '5732', '5812'][sequence % 3],
+      }, scenario);
+    };
+    emit();
+    demoTimerRef.current = window.setInterval(emit, scenario === 'fraud_burst' ? 700 : 1100);
+  }, [stopDemo, submitDemoTransaction]);
+
+  useEffect(() => () => window.clearInterval(demoTimerRef.current), []);
 
   const handleTransaction = useCallback((entry) => {
     addTransaction(entry);
@@ -167,6 +228,7 @@ export function AppProvider({ children }) {
   }, [applyAuditJobs, applyAudits]);
 
   const stream = useWebSocketStream({
+    token: accessToken,
     onTransaction: handleTransaction,
     onAuditEvent: handleAuditEvent,
     onReconnect: resyncAfterReconnect,
@@ -201,17 +263,6 @@ export function AppProvider({ children }) {
   useEffect(() => {
     localStorage.setItem('sentinel-sidebar-collapsed', String(sidebarCollapsed));
   }, [sidebarCollapsed]);
-
-  useEffect(() => {
-    const onKeyDown = (event) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
-        event.preventDefault();
-        setCommandOpen((open) => !open);
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
 
   const processingAuditIds = useMemo(() => Object.entries(auditStatuses)
     .filter(([, state]) => state.status === 'processing')
@@ -262,19 +313,23 @@ export function AppProvider({ children }) {
   }, [transactions, blockedTransactions]);
 
   const value = useMemo(() => ({
-    transactions, blockedTransactions, audits, auditStatuses, merchants, stats, health, loading, dataError,
-    notice, auditSearch, selectedAuditId, commandOpen, sidebarCollapsed,
+    transactions, blockedTransactions, audits, auditJobs, auditStatuses, merchants, stats, health, loading, dataError,
+    notice, auditSearch, selectedAuditId, sidebarCollapsed,
+    demoControlOpen, demoStatus, demoScenario, demoEvents, isDemoSession: user?.email?.startsWith('demo.'),
     liveStream: stream.liveStream, connectionStatus: stream.connectionStatus,
     lastEventAt: stream.lastEventAt, reconnectAttempt: stream.reconnectAttempt, streamError: stream.streamError,
-    setNotice, setAuditSearch, setSelectedAuditId, setCommandOpen, setSidebarCollapsed,
+    setNotice, setAuditSearch, setSelectedAuditId, setSidebarCollapsed, setDemoControlOpen,
     addTransaction, queueAudit, refreshAudits, hydrate, checkHealth,
     connectStream: stream.connect, disconnectStream: stream.disconnect,
+    startDemo, stopDemo, submitDemoTransaction,
   }), [
-    transactions, blockedTransactions, audits, auditStatuses, merchants, stats, health, loading, dataError,
-    notice, auditSearch, selectedAuditId, commandOpen, sidebarCollapsed, stream.liveStream,
+    transactions, blockedTransactions, audits, auditJobs, auditStatuses, merchants, stats, health, loading, dataError,
+    notice, auditSearch, selectedAuditId, sidebarCollapsed, demoControlOpen, demoStatus,
+    demoScenario, demoEvents, user?.email, stream.liveStream,
     stream.connectionStatus, stream.lastEventAt, stream.reconnectAttempt, stream.streamError,
-    setNotice, setAuditSearch, setSelectedAuditId, setCommandOpen, setSidebarCollapsed,
+    setNotice, setAuditSearch, setSelectedAuditId, setSidebarCollapsed,
     addTransaction, queueAudit, refreshAudits, hydrate, checkHealth, stream.connect, stream.disconnect,
+    startDemo, stopDemo, submitDemoTransaction,
   ]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

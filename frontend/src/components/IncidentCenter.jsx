@@ -1,107 +1,271 @@
-import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ArrowRight, FileSearch, Filter, Search, ShieldCheck } from 'lucide-react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { useApp } from '../context/AppContext';
-import { Badge, EmptyState, Panel } from './ui/Primitives';
-
-const metricMeta = {
-  card_vel_10m: ['Card velocity', 5],
-  device_card_ratio_30m: ['Device / card ratio', 1],
-  device_card_limit_crossed: ['Device card limit', 1],
-  is_known_merchant: ['Known merchant', 1],
-  is_off_hours_window: ['Off-hours window', 1],
-};
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { CheckCircle2, Clock3, History, RotateCcw, Search, Send, UserCheck } from 'lucide-react';
+import {
+  assignReviewCase,
+  fetchReviewCase,
+  fetchReviewCases,
+  fetchUsers,
+  finalizeReviewCase,
+  reopenReviewCase,
+  returnReviewCase,
+  submitReviewRecommendation,
+} from '../api/client';
+import { useAuth } from '../context/AuthContext';
+import { Badge, EmptyState, PageGuide } from './ui/Primitives';
 
 const money = (value = 0) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(value / 100);
+const utc = (value) => value ? `${new Date(value).toLocaleString('en-GB', { timeZone: 'UTC', hour12: false })} UTC` : '—';
+const words = (value = '') => value.replaceAll('_', ' ');
+const stages = ['open', 'in_review', 'awaiting_approval', 'resolved'];
 
-const contributionKeys = [
-  'amount_paise',
-  'card_vel_10m',
-  'device_card_ratio_30m',
-  'device_card_limit_crossed',
-  'is_known_merchant',
-  'is_off_hours_window',
-];
-
-function normalizeModelImpacts(values = {}) {
-  const total = Object.values(values).reduce((sum, value) => sum + Math.abs(Number(value) || 0), 0);
-  return Object.fromEntries(Object.entries(values).map(([key, value]) => [
-    key,
-    total > 0 ? (Number(value) || 0) / total : 0,
-  ]));
+function Workflow({ status }) {
+  const active = Math.max(0, stages.indexOf(status));
+  return (
+    <div className="case-workflow" aria-label={`Workflow stage ${words(status)}`}>
+      {stages.map((stage, index) => (
+        <div key={stage} className={index < active ? 'is-complete' : index === active ? 'is-current' : ''}>
+          <i>{index < active ? '✓' : index + 1}</i>
+          <span>
+            <strong>{stage === 'open' ? 'Unassigned' : stage === 'in_review' ? 'Analyst review' : stage === 'awaiting_approval' ? 'Admin approval' : 'Finalized'}</strong>
+            <small>{stage === 'open' ? 'Awaiting assignment' : stage === 'in_review' ? 'Evidence investigation' : stage === 'awaiting_approval' ? 'Recommendation submitted' : 'Decision recorded'}</small>
+          </span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
-function SignalBar({ label, value, max = 1, alert }) {
-  const width = Math.max(2, Math.min(100, (Number(value) / max) * 100));
-  return <div className="signal-row"><div><span>{label}</span><strong className="mono">{Number(value).toFixed(3)}</strong></div><div className="signal-track"><span className={alert ? 'signal-fill signal-fill--critical' : 'signal-fill'} style={{ width: `${width}%` }} /></div></div>;
+function EvidenceBars({ shap = {} }) {
+  const x = shap.xgb_normalized_impacts || shap.xgb_feature_impacts || {};
+  const l = shap.lgb_normalized_impacts || shap.lgb_feature_impacts || {};
+  const keys = [...new Set([...Object.keys(x), ...Object.keys(l)])].slice(0, 7);
+  const max = Math.max(.001, ...keys.flatMap((key) => [Math.abs(Number(x[key] || 0)), Math.abs(Number(l[key] || 0))]));
+  return (
+    <div className="evidence-bars">
+      {keys.map((key) => (
+        <div key={key} tabIndex="0">
+          <span>{words(key)}</span>
+          <i>
+            <b style={{ width: `${Math.abs(Number(x[key] || 0)) / max * 100}%` }} />
+            <em style={{ width: `${Math.abs(Number(l[key] || 0)) / max * 100}%` }} />
+          </i>
+          <small className="mono"><strong>X</strong> {Number(x[key] || 0).toFixed(3)} · <strong>L</strong> {Number(l[key] || 0).toFixed(3)}</small>
+          <output>
+            <strong>{words(key)}</strong>
+            <span>XGBoost contribution: {Number(x[key] || 0).toFixed(4)}</span>
+            <span>LightGBM contribution: {Number(l[key] || 0).toFixed(4)}</span>
+          </output>
+        </div>
+      ))}
+    </div>
+  );
 }
 
-function ContributionComparison({ shap = {} }) {
-  const xgb = shap.xgb_normalized_impacts || normalizeModelImpacts(shap.xgb_feature_impacts);
-  const lgb = shap.lgb_normalized_impacts || normalizeModelImpacts(shap.lgb_feature_impacts);
-  return <div className="contribution-list">{contributionKeys.map((key) => {
-    const x = Number(xgb[key] || 0);
-    const l = Number(lgb[key] || 0);
-    const divergent = Math.sign(x) !== Math.sign(l) && Math.abs(x) > 0.01 && Math.abs(l) > 0.01;
-    return <div className="contribution" key={key}><div className="contribution-title"><strong>{metricMeta[key]?.[0] || key.replaceAll('_', ' ')}</strong>{divergent && <Badge tone="warning">Divergence</Badge>}</div><div className="comparison-line"><span>XGB</span><div><i style={{ width: `${Math.abs(x) * 100}%` }} className={x >= 0 ? 'positive' : 'negative'} /></div><output className="mono">{x >= 0 ? '+' : ''}{(x * 100).toFixed(1)}%</output></div><div className="comparison-line"><span>LGB</span><div><i style={{ width: `${Math.abs(l) * 100}%` }} className={l >= 0 ? 'positive' : 'negative'} /></div><output className="mono">{l >= 0 ? '+' : ''}{(l * 100).toFixed(1)}%</output></div></div>;
-  })}</div>;
+function DecisionRecord({ detail }) {
+  const recommendationAction = [...detail.actions].reverse().find((action) => ['recommendation_submitted', 'decision_submitted'].includes(action.action_type));
+  const finalAction = [...detail.actions].reverse().find((action) => ['final_decision_submitted', 'overridden'].includes(action.action_type));
+  return (
+    <div className="decision-record">
+      <div><span>Analyst recommendation</span><strong>{detail.analyst_recommendation ? words(detail.analyst_recommendation) : 'Not submitted'}</strong><p>{recommendationAction?.reason || 'The assigned analyst has not submitted a recommendation.'}</p><small>{recommendationAction ? utc(recommendationAction.created_at) : ''}</small></div>
+      <i />
+      <div><span>Administrator decision</span><strong>{detail.final_decision ? words(detail.final_decision) : 'Awaiting approval'}</strong><p>{finalAction?.reason || 'The final administrator decision has not been recorded.'}</p><small>{finalAction ? utc(finalAction.created_at) : ''}</small></div>
+      {detail.final_decision && <Badge tone={detail.final_decision === detail.analyst_recommendation ? 'info' : 'warning'}>{detail.final_decision === detail.analyst_recommendation ? 'Recommendation approved' : 'Decision changed'}</Badge>}
+    </div>
+  );
+}
+
+function CaseHistory({ actions = [] }) {
+  return (
+    <section className="case-history">
+      <h4><History size={15} /> Immutable case history</h4>
+      {actions.map((action) => (
+        <div key={action.id}>
+          <i />
+          <span>
+            <strong>{words(action.action_type)}</strong>
+            <small>{action.reason}</small>
+            {action.decision && <Badge tone="neutral">{words(action.decision)}</Badge>}
+            <em>{utc(action.created_at)} · version {action.case_version}</em>
+          </span>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function CaseAction({ admin, detail, assignedToMe, users, assignee, setAssignee, decision, setDecision, reason, setReason, busy, act }) {
+  if (!detail) return null;
+  let title = detail.status === 'open' ? 'Assign an analyst' : detail.status === 'in_review' ? 'Analyst investigation' : detail.status === 'awaiting_approval' ? 'Record final decision' : 'Decision complete';
+
+  return (
+    <section className="embedded-case-action">
+      <header>
+        <div><span className="eyebrow">Required next action</span><h3>{title}</h3></div>
+        <p>{detail.assigned_reviewer ? `Owned by ${detail.assigned_reviewer.full_name}` : 'No analyst is assigned'}</p>
+      </header>
+
+      {admin && detail.status === 'open' && <div className="decision-form">
+        <label>Analyst<select value={assignee} onChange={(event) => setAssignee(event.target.value)}><option value="">Choose an active analyst</option>{users.filter((item) => item.role === 'analyst' && item.is_active).map((item) => <option key={item.id} value={item.id}>{item.full_name}</option>)}</select></label>
+        <label>Assignment context<textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Explain the priority and requested investigation…" /></label>
+        <button className="button button--primary" disabled={!assignee || reason.trim().length < 10 || busy} onClick={() => act(() => assignReviewCase(detail.id, { expected_version: detail.version, assigned_to_user_id: Number(assignee), reason }))}><UserCheck size={16} />Assign investigation</button>
+      </div>}
+
+      {admin && detail.status === 'in_review' && <div className="waiting-state"><Clock3 /><strong>Investigation in progress</strong><p>{detail.assigned_reviewer?.full_name} owns this case. Final-decision controls appear after their recommendation is submitted.</p></div>}
+
+      {admin && detail.status === 'awaiting_approval' && <div className="decision-form">
+        <label>Final verdict<select value={decision === 'needs_more_information' ? 'confirmed_fraud' : decision} onChange={(event) => setDecision(event.target.value)}><option value="confirmed_fraud">Confirmed fraud</option><option value="false_positive">False positive</option></select></label>
+        <label>Administrator rationale<textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Explain why the recommendation is approved or changed…" /></label>
+        <button className="button button--primary" disabled={reason.trim().length < 10 || busy} onClick={() => act(() => finalizeReviewCase(detail.id, { expected_version: detail.version, decision: decision === 'needs_more_information' ? 'confirmed_fraud' : decision, reason }))}><CheckCircle2 size={16} />Record final decision</button>
+        <button className="button button--secondary" disabled={reason.trim().length < 10 || busy} onClick={() => act(() => returnReviewCase(detail.id, { expected_version: detail.version, reason }))}><RotateCcw size={16} />Return for more evidence</button>
+      </div>}
+
+      {admin && detail.status === 'resolved' && <div className="decision-form">
+        <div className="waiting-state"><CheckCircle2 /><strong>Final decision recorded</strong><p>This case is read-only. Reopening appends a new transition without changing the original history.</p></div>
+        <label>Reopen rationale<textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Explain why another investigation is required…" /></label>
+        <button className="button button--secondary" disabled={reason.trim().length < 10 || busy} onClick={() => act(() => reopenReviewCase(detail.id, { expected_version: detail.version, reason }))}><RotateCcw size={16} />Reopen case</button>
+      </div>}
+
+      {!admin && detail.status === 'in_review' && assignedToMe && <div className="decision-form">
+        <label>Recommendation<select value={decision} onChange={(event) => setDecision(event.target.value)}><option value="confirmed_fraud">Confirmed fraud</option><option value="false_positive">False positive</option><option value="needs_more_information">More evidence required</option></select></label>
+        <label>Evidence-backed rationale<textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Record the evidence behind your recommendation…" /></label>
+        <button className="button button--primary" disabled={reason.trim().length < 10 || busy} onClick={() => act(() => submitReviewRecommendation(detail.id, { expected_version: detail.version, decision, reason }))}><Send size={16} />Submit recommendation</button>
+        <small className="authority-note">An administrator must approve or change this recommendation before the case is resolved.</small>
+      </div>}
+
+      {!admin && detail.status === 'in_review' && !assignedToMe && <div className="waiting-state"><Clock3 /><strong>Assigned to another analyst</strong><p>This case is visible for context but cannot be changed from your account.</p></div>}
+      {!admin && detail.status === 'open' && <div className="waiting-state"><Clock3 /><strong>Awaiting administrator assignment</strong><p>No analyst action is available until an administrator assigns this case.</p></div>}
+      {!admin && detail.status === 'awaiting_approval' && <div className="waiting-state"><Clock3 /><strong>Recommendation submitted</strong><p>The case is waiting for an administrator to record the final verdict.</p></div>}
+      {!admin && detail.status === 'resolved' && <div className="waiting-state"><CheckCircle2 /><strong>Administrator finalized</strong><p>Review the recommendation and final decision comparison above.</p></div>}
+    </section>
+  );
 }
 
 export default function IncidentCenter() {
-  const { blockedTransactions, loading, dataError, setAuditSearch, setSelectedAuditId } = useApp();
-  const location = useLocation();
-  const navigate = useNavigate();
+  const { user } = useAuth();
+  const admin = user?.role === 'admin';
+  const [page, setPage] = useState({ items: [], total: 0 });
+  const [detail, setDetail] = useState(null);
+  const [status, setStatus] = useState('');
+  const [priority, setPriority] = useState('');
+  const [mine, setMine] = useState(!admin);
   const [query, setQuery] = useState('');
-  const [severity, setSeverity] = useState('all');
-  const [merchant, setMerchant] = useState('all');
-  const [selected, setSelected] = useState(null);
+  const [decision, setDecision] = useState('confirmed_fraud');
+  const [reason, setReason] = useState('');
+  const [users, setUsers] = useState([]);
+  const [assignee, setAssignee] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
 
-  const merchants = useMemo(() => [...new Set(blockedTransactions.map((item) => item.merchant_id))].sort(), [blockedTransactions]);
-  const filtered = useMemo(() => blockedTransactions.filter((item) => {
-    const matchesQuery = `${item.card_id} ${item.device_id}`.toLowerCase().includes(query.toLowerCase());
-    const score = Number(item.ensemble_risk_score);
-    const matchesSeverity = severity === 'all' || severity === 'high' && score >= 0.2 || severity === 'elevated' && score < 0.2;
-    return matchesQuery && matchesSeverity && (merchant === 'all' || item.merchant_id === merchant);
-  }), [blockedTransactions, query, severity, merchant]);
+  const queueFilters = useMemo(() => ({ status, priority, assigned_to_me: mine, limit: 100 }), [status, priority, mine]);
+  const loadQueue = useCallback(async () => {
+    try {
+      setError('');
+      const data = await fetchReviewCases(queueFilters);
+      setPage(data);
+      return data;
+    } catch (requestError) {
+      setError(requestError.message);
+      return { items: [] };
+    }
+  }, [queueFilters]);
 
   useEffect(() => {
-    const requested = location.state?.selectedKey;
-    const next = requested ? blockedTransactions.find((item) => item._key === requested) : filtered[0];
-    if (!selected || !blockedTransactions.includes(selected)) setSelected(next || null);
-  }, [blockedTransactions, filtered, location.state, selected]);
+    let active = true;
+    loadQueue().then(async (data) => {
+      if (active && data.items[0]) setDetail(await fetchReviewCase(data.items[0].id));
+    });
+    return () => { active = false; };
+  }, [loadQueue]);
+  useEffect(() => { if (admin) fetchUsers().then(setUsers).catch(() => {}); }, [admin]);
 
-  const openAudit = () => {
-    setAuditSearch(selected.card_id);
-    setSelectedAuditId(null);
-    navigate('/app/vault');
+  const open = async (item) => {
+    setBusy(true);
+    try {
+      setDetail(await fetchReviewCase(item.id));
+      setReason('');
+      setAssignee(item.assigned_to_user_id ? String(item.assigned_to_user_id) : '');
+      setError('');
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const act = async (action) => {
+    if (!detail) return;
+    setBusy(true);
+    setError('');
+    try {
+      await action();
+      setDetail(await fetchReviewCase(detail.id));
+      await loadQueue();
+      setReason('');
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setBusy(false);
+    }
   };
 
+  const visible = useMemo(() => page.items.filter((item) => `${item.transaction_id} ${item.id} ${item.assigned_reviewer?.full_name || ''}`.toLowerCase().includes(query.toLowerCase())), [page.items, query]);
+  const transaction = detail?.transaction;
+  const assignedToMe = detail?.assigned_to_user_id === user?.id;
+
   return (
-    <div className="page-stack">
-      <section className="incident-summary"><div><span className="summary-icon"><AlertTriangle size={20} /></span><div><strong>{blockedTransactions.length} blocked transactions</strong><p>Prioritized model decisions in the currently loaded ledger.</p></div></div><div className="summary-meta"><span>Highest observed score</span><strong className="mono">{blockedTransactions.length ? `${(Math.max(...blockedTransactions.map((item) => Number(item.ensemble_risk_score))) * 100).toFixed(2)}%` : '—'}</strong></div></section>
-
-      <div className="incident-layout">
-        <Panel title="Incident queue" eyebrow="Triage" className="incident-queue" action={<Badge tone="critical">{filtered.length} visible</Badge>}>
-          <div className="filter-stack">
-            <label className="search-field"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search card or device" aria-label="Search incident queue" /></label>
-            <div className="filter-row"><label><Filter size={14} /><span className="sr-only">Severity</span><select value={severity} onChange={(event) => setSeverity(event.target.value)}><option value="all">All severities</option><option value="high">High · 20%+</option><option value="elevated">Elevated · below 20%</option></select></label><label><span className="sr-only">Merchant</span><select value={merchant} onChange={(event) => setMerchant(event.target.value)}><option value="all">All merchants</option>{merchants.map((id) => <option key={id} value={id}>MCC {id}</option>)}</select></label></div>
+    <div className="ops-page">
+      <PageGuide title={admin ? 'Turn analyst recommendations into final decisions.' : 'Investigate assigned model decisions and submit evidence-backed recommendations.'}>
+        {admin ? 'Assign open cases, monitor active investigations, and act only when a recommendation reaches approval.' : 'Your recommendation never closes the case. An administrator reviews it and records the final verdict.'}
+      </PageGuide>
+      <section className="ops-statusline">
+        <div><strong>{admin ? 'Review control' : 'My investigation queue'}</strong></div>
+        <span>{page.total} cases</span>
+        <span>{page.items.filter((item) => item.status === 'open').length} unassigned</span>
+        <span>{page.items.filter((item) => item.status === 'in_review').length} investigating</span>
+        <span>{page.items.filter((item) => item.status === 'awaiting_approval').length} awaiting approval</span>
+      </section>
+      {error && <div className="ops-alert">{error}</div>}
+      <section className="review-workbench">
+        <aside className="review-queue">
+          <div className="queue-tools">
+            <label className="ops-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Case, transaction or analyst" /></label>
+            <div>
+              <select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">Every stage</option><option value="open">Unassigned</option><option value="in_review">Analyst review</option><option value="awaiting_approval">Awaiting approval</option><option value="resolved">Resolved</option></select>
+              <select value={priority} onChange={(event) => setPriority(event.target.value)}><option value="">Every priority</option><option value="critical">Critical</option><option value="high">High</option></select>
+            </div>
+            {!admin && <label className="queue-check"><input type="checkbox" checked={mine} onChange={(event) => setMine(event.target.checked)} />Assigned to me</label>}
           </div>
-          <div className="incident-list">
-            {loading ? <div className="list-loading"><span className="skeleton" /><span className="skeleton" /><span className="skeleton" /></div> : dataError && !blockedTransactions.length ? <EmptyState error title="Incident data unavailable" message={dataError} /> : !filtered.length ? <EmptyState title="No matching incidents" message="Adjust the search or filters to broaden the queue." /> : filtered.map((item) => <button key={item._key || `${item.timestamp}-${item.card_id}`} className={`incident-item ${selected === item ? 'incident-item--selected' : ''}`} onClick={() => setSelected(item)}><span className="severity-marker" aria-hidden="true" /><div><strong className="mono">{item.card_id}</strong><small className="mono">{item.device_id}</small><span>{new Date(item.timestamp).toLocaleString()}</span></div><div><strong className="mono">{(Number(item.ensemble_risk_score) * 100).toFixed(2)}%</strong><small className="mono">{money(item.amount_paise)}</small><ArrowRight size={14} /></div></button>)}
+          <div className="case-list">
+            {visible.length ? visible.map((item) => (
+              <button key={item.id} onClick={() => open(item)} className={detail?.id === item.id ? 'is-selected' : ''}>
+                <i className={`priority-mark priority-${item.priority}`} />
+                <span><strong>Case {String(item.id).padStart(4, '0')}</strong><small className="mono">{item.transaction_id}</small><em>{item.assigned_reviewer?.full_name || 'Unassigned'} · {words(item.status)}</em></span>
+                <Badge tone={item.status === 'awaiting_approval' ? 'info' : item.priority === 'critical' ? 'critical' : 'warning'}>{item.status === 'awaiting_approval' ? 'approval' : item.priority}</Badge>
+              </button>
+            )) : <EmptyState title="Queue is clear" message="No cases match the active filters." />}
           </div>
-        </Panel>
+        </aside>
 
-        <Panel className="incident-detail">
-          {!selected ? <EmptyState title="Select an incident" message="Choose a blocked transaction from the queue to inspect its evidence." action={<ShieldCheck size={18} />} /> : <div className="investigation">
-            <header className="investigation-header"><div><span className="eyebrow">Blocked transaction</span><h2 className="mono">{selected.card_id}</h2><p className="mono">{selected.device_id} · MCC {selected.merchant_id}</p></div><div className="risk-score"><span>Ensemble risk</span><strong className="mono">{(Number(selected.ensemble_risk_score) * 100).toFixed(3)}%</strong><Badge tone="critical">Blocked</Badge></div></header>
-            <div className="decision-context"><div><span>Amount</span><strong className="mono">{money(selected.amount_paise)}</strong></div><div><span>Evaluated</span><strong className="mono">{new Date(selected.timestamp).toLocaleString()}</strong></div><div><span>Merchant</span><strong className="mono">{selected.merchant_id}</strong></div></div>
-            <section className="investigation-section"><div className="section-heading"><div><span className="eyebrow">Enrichment signals</span><h3>Hydrated risk indicators</h3></div></div><div className="signals-grid">{Object.entries(metricMeta).map(([key, [label, max]]) => { const value = Number(selected.hydrated_metrics?.[key] || 0); const alert = key === 'card_vel_10m' ? value >= 3 : key === 'is_known_merchant' ? value === 0 : value > 0.5; return <SignalBar key={key} label={label} value={value} max={max} alert={alert} />; })}</div></section>
-            <section className="investigation-section"><div className="section-heading"><div><span className="eyebrow">Model evidence</span><h3>XGBoost and LightGBM contributions</h3></div><p>Signed relative share within each model. Compare direction and importance, not raw magnitude.</p></div><ContributionComparison shap={selected.shap_payload} /></section>
-            <details className="payload-disclosure"><summary>Raw transaction payload</summary><pre>{JSON.stringify({ card_id: selected.card_id, device_id: selected.device_id, merchant_id: selected.merchant_id, amount_paise: selected.amount_paise, ensemble_risk_score: selected.ensemble_risk_score, hydrated_metrics: selected.hydrated_metrics, shap_payload: selected.shap_payload }, null, 2)}</pre></details>
-            <button className="button button--primary" onClick={openAudit}><FileSearch size={16} />Open related audit records</button>
-          </div>}
-        </Panel>
-      </div>
+        <main className="review-evidence">
+          {detail && transaction ? <>
+            <Workflow status={detail.status} />
+            <header>
+              <div><span className="eyebrow">Case {String(detail.id).padStart(4, '0')} · version {detail.version}</span><h2 className="mono">{transaction.transaction_id}</h2><p>{utc(transaction.timestamp)} · MCC {transaction.merchant_id}</p></div>
+              <div className="review-score"><span>Ensemble risk</span><strong className="mono">{(transaction.ensemble_risk_score * 100).toFixed(3)}%</strong><Badge tone="critical">{detail.priority}</Badge></div>
+            </header>
+            <div className="evidence-facts">
+              <div><span>Amount</span><strong>{money(transaction.amount_paise)}</strong></div>
+              <div><span>Card</span><strong className="mono">{transaction.card_id}</strong></div>
+              <div><span>Device</span><strong className="mono">{transaction.device_id}</strong></div>
+              <div><span>Assigned analyst</span><strong>{detail.assigned_reviewer?.full_name || 'Not assigned'}</strong></div>
+            </div>
+            {['awaiting_approval', 'resolved'].includes(detail.status) && <DecisionRecord detail={detail} />}
+            <section className="evidence-section"><div><span className="eyebrow">Interactive model comparison</span><h3>Signals that moved the ensemble decision</h3><p>Hover or focus a signal to compare both tree-model contributions.</p></div><EvidenceBars shap={transaction.shap_payload} /></section>
+            <section className="evidence-section"><div><span className="eyebrow">Hydrated context</span><h3>Runtime evidence supplied to the models</h3></div><div className="signal-matrix">{Object.entries(transaction.hydrated_metrics || {}).map(([key, value]) => <div key={key}><span>{words(key)}</span><strong className="mono">{String(value)}</strong></div>)}</div></section>
+            <CaseAction admin={admin} detail={detail} assignedToMe={assignedToMe} users={users} assignee={assignee} setAssignee={setAssignee} decision={decision} setDecision={setDecision} reason={reason} setReason={setReason} busy={busy} act={act} />
+            <CaseHistory actions={detail.actions} />
+          </> : <EmptyState title="Select a review case" message="Evidence, ownership, recommendation and final decision will appear here." />}
+        </main>
+      </section>
     </div>
   );
 }

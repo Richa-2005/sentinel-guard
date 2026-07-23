@@ -66,6 +66,9 @@ class FinancialEnsembleGate:
             y_test,
             ensemble_probs,
         )
+
+        ensemble_pr_auc = auc(recall, precision)
+
         f2_scores = (
             5 * precision[:-1] * recall[:-1]
             / (4 * precision[:-1] + recall[:-1] + 1e-12)
@@ -76,6 +79,9 @@ class FinancialEnsembleGate:
 
         config_path = persist_model_config(best_threshold)
         print(f"Optimization Found! Peak F2-Score: {best_f2:.4f} at Boundary: {best_threshold:.2f}")
+
+        print(f"Ensemble PR-AUC Score: {ensemble_pr_auc:.4f}")
+        
         print(f"Calibrated model configuration saved to: {config_path}")
         return best_threshold, ensemble_probs
     

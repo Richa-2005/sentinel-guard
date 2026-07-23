@@ -1,77 +1,44 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Check, Clipboard, FileClock, FileText, Link2, RefreshCw, Search, ShieldCheck } from 'lucide-react';
+import { Check, Clipboard, Expand, FileText, Link2, RefreshCw, Search, ShieldCheck, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import { verifyAuditChain } from '../api/client';
 import { useApp } from '../context/AppContext';
-import { Badge, EmptyState, Panel } from './ui/Primitives';
+import { useAuth } from '../context/AuthContext';
+import { Badge, EmptyState, PageGuide } from './ui/Primitives';
 
-function enhancedReport(text = '') {
-  return text
-    .replace(/(REGULATORY COMPLIANCE CROSS-REFERENCE[^\n]*)/gi, '### $1')
-    .replace(/(EXECUTIVE RISK VERDICT[^\n]*)/gi, '## $1')
-    .replace(/(TECHNICAL SPECIFICATION PROFILE[^\n]*)/gi, '## $1')
-    .replace(/(RBI[^\n]*)/gi, '**$1**')
-    .replace(/(Visa[^\n]*)/gi, '**$1**');
-}
+const improve=(text='')=>text.split('\n').map(line=>{
+  if(/^\s*#{1,6}\s/.test(line))return line;
+  if(/^(?:[A-D]\.\s*)?(EXECUTIVE RISK VERDICT|TECHNICAL SPECIFICATION PROFILE|REGULATORY COMPLIANCE CROSS-REFERENCE|COMPLIANCE CROSS-REFERENCE|MITIGATION AND ACTIONABLE DEFENCE ROADMAP)/i.test(line.trim()))return `## ${line.trim()}`;
+  return line;
+}).join('\n');
+const utc=(v)=>v?new Date(v).toLocaleString('en-GB',{timeZone:'UTC',hour12:false})+' UTC':'Historical record';
 
-function HashField({ label, value }) {
-  const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    if (!value) return;
-    await navigator.clipboard.writeText(value);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1600);
-  };
-  return <div className="hash-field"><span>{label}</span><code>{value || 'Not recorded'}</code><button className="icon-button" onClick={copy} disabled={!value} aria-label={`Copy ${label}`}>{copied ? <Check size={15} /> : <Clipboard size={15} />}</button></div>;
-}
+function CopyButton({text,label='Copy report'}){const[copied,setCopied]=useState(false);const copy=async()=>{try{await navigator.clipboard.writeText(text||'')}catch{const area=document.createElement('textarea');area.value=text||'';area.style.position='fixed';area.style.opacity='0';document.body.appendChild(area);area.select();document.execCommand('copy');area.remove()}setCopied(true);setTimeout(()=>setCopied(false),1500)};return <button className="button button--secondary" onClick={copy} disabled={!text}>{copied?<Check size={14}/>:<Clipboard size={14}/>} {copied?'Copied':label}</button>}
+function Hash({label,value}){return <div className="ledger-hash"><span>{label}</span><code>{value||'Not recorded'}</code><CopyButton text={value} label="Copy"/></div>}
+function Report({record}){return <article className="report-paper"><header><div><span>Sentinel Guard · Compliance memorandum</span><h1>Model decision review</h1></div><b>Record #{record.id}</b></header><div className="report-meta"><div><span>Target card</span><strong>{record.card_id}</strong></div><div><span>Recorded</span><strong>{utc(record.timestamp)}</strong></div><div><span>Chain state</span><strong>Append-only</strong></div></div><div className="report-prose"><ReactMarkdown>{improve(record.report_text)}</ReactMarkdown></div></article>}
 
-export default function ComplianceVault() {
-  const { audits, auditStatuses, loading, dataError, refreshAudits, auditSearch, setAuditSearch, selectedAuditId, setSelectedAuditId } = useApp();
-  const [refreshing, setRefreshing] = useState(false);
-
-  const filtered = useMemo(() => {
-    const query = auditSearch.trim().toLowerCase();
-    if (!query) return audits;
-    return audits.filter((item) => `${item.card_id} ${item.report_text}`.toLowerCase().includes(query));
-  }, [audits, auditSearch]);
-
-  const selected = useMemo(() => audits.find((item) => item.id === selectedAuditId) || filtered[0] || null, [audits, filtered, selectedAuditId]);
-  useEffect(() => { if (selected && selected.id !== selectedAuditId) setSelectedAuditId(selected.id); }, [selected, selectedAuditId, setSelectedAuditId]);
-
-  const continuity = useMemo(() => {
-    if (!selected?.previous_hash) return { matched: false, genesis: true, source: null };
-    const previous = audits.find((item) => item.current_hash === selected.previous_hash);
-    return { matched: Boolean(previous), genesis: /^0{64}$/.test(selected.previous_hash), source: previous };
-  }, [audits, selected]);
-
-  const refresh = async () => {
-    setRefreshing(true);
-    try { await refreshAudits(); } finally { setRefreshing(false); }
-  };
-
-  const pendingCount = Object.values(auditStatuses).filter((state) => state.status === 'processing' || state.status === 'delayed').length;
-
-  return (
-    <div className="page-stack">
-      <section className="vault-summary"><div><span className="summary-icon summary-icon--success"><ShieldCheck size={20} /></span><div><strong>{audits.length} compliance records</strong><p>Chain-linked reports update automatically when background compilation completes.</p></div></div><div className="vault-actions">{pendingCount > 0 ? <Badge tone="warning">{pendingCount} processing</Badge> : <Badge tone="success">Live updates</Badge>}<button className="button button--secondary" onClick={refresh} disabled={refreshing}><RefreshCw size={15} className={refreshing ? 'spin' : ''} />Refresh records</button></div></section>
-
-      {dataError && <div className="inline-alert" role="alert"><AlertTriangle size={17} /><div><strong>Vault synchronization issue</strong><p>{dataError}</p></div></div>}
-
-      <div className="vault-layout">
-        <Panel title="Record index" eyebrow="Audit ledger" className="vault-index" action={<span className="panel-count">{filtered.length}</span>}>
-          <label className="search-field"><Search size={15} /><input value={auditSearch} onChange={(event) => { setAuditSearch(event.target.value); setSelectedAuditId(null); }} placeholder="Search card ID or report" aria-label="Search audit records" /></label>
-          <div className="audit-list">
-            {loading ? <div className="list-loading"><span className="skeleton" /><span className="skeleton" /><span className="skeleton" /></div> : !filtered.length ? <EmptyState title="No audit records found" message={auditSearch ? 'No records match the current search.' : 'Blocked transaction reports will appear here when compilation completes.'} /> : filtered.map((item) => <button key={item.id} className={`audit-item ${selected?.id === item.id ? 'audit-item--selected' : ''}`} onClick={() => setSelectedAuditId(item.id)}><span className={`record-icon ${item.is_error ? 'record-icon--error' : ''}`}>{item.is_error ? <FileClock size={16} /> : <FileText size={16} />}</span><span><strong className="mono">{item.card_id || 'Unknown card'}</strong><small className="mono">{item.timestamp || 'Historical record'}</small></span><Badge tone={item.is_error ? 'warning' : 'success'}>{item.is_error ? 'Generation issue' : 'Recorded'}</Badge></button>)}
-          </div>
-        </Panel>
-
-        <Panel className="vault-document" aria-live="polite">
-          {!selected ? <EmptyState title="Select a compliance record" message="Choose a record from the index to review its memorandum and chain metadata." /> : selected.is_error ? <div className="audit-error-state"><AlertTriangle size={26} /><span className="eyebrow">Report generation issue</span><h2>The risk decision is retained, but the memorandum was not completed.</h2><p>{selected.report_text}</p><button className="button button--secondary" onClick={refresh}>Check for newer records</button></div> : <article className="audit-document"><header><div><span className="eyebrow">Compliance memorandum</span><h2>Incident review record</h2></div><Badge tone="success">Chain-linked</Badge></header><div className="document-meta"><div><span>Target card</span><strong className="mono">{selected.card_id}</strong></div><div><span>Record time</span><strong className="mono">{selected.timestamp}</strong></div><div><span>Record ID</span><strong className="mono">#{selected.id}</strong></div></div><div className="markdown-report"><ReactMarkdown>{enhancedReport(selected.report_text)}</ReactMarkdown></div></article>}
-        </Panel>
-
-        <Panel title="Ledger continuity" eyebrow="Record metadata" className="vault-chain">
-          {selected ? <div className="chain-content"><div className={`continuity-state ${continuity.matched || continuity.genesis ? 'continuity-state--matched' : 'continuity-state--unknown'}`}>{continuity.matched || continuity.genesis ? <Link2 size={19} /> : <AlertTriangle size={19} />}<div><strong>{continuity.genesis ? 'Genesis link recorded' : continuity.matched ? 'Continuity matched' : 'Predecessor not loaded'}</strong><p>{continuity.genesis ? 'This record begins the available chain.' : continuity.matched ? `Previous hash matches record #${continuity.source.id}.` : 'The referenced predecessor is outside the loaded record set or unavailable.'}</p></div></div><HashField label="Previous entry hash" value={selected.previous_hash} /><div className="chain-connector" aria-hidden="true"><span /><Link2 size={14} /><span /></div><HashField label="Current record hash" value={selected.current_hash} /><p className="chain-disclaimer">Continuity is determined by matching the recorded hash references supplied by the backend. This interface does not independently certify the source ledger.</p></div> : <EmptyState title="No chain metadata" message="Select an audit record to inspect its recorded hash references." />}
-        </Panel>
-      </div>
-    </div>
-  );
+export default function ComplianceVault(){
+  const{audits,auditStatuses,loading,refreshAudits,auditSearch,setAuditSearch,selectedAuditId,setSelectedAuditId}=useApp();
+  const{user}=useAuth();const admin=user?.role==='admin';
+  const[reader,setReader]=useState(false);const[verification,setVerification]=useState(null);const[checking,setChecking]=useState(false);const[syncing,setSyncing]=useState(false);const[syncMessage,setSyncMessage]=useState('');
+  const filtered=useMemo(()=>audits.filter(a=>`${a.card_id} ${a.transaction_id} ${a.report_text}`.toLowerCase().includes(auditSearch.toLowerCase())),[audits,auditSearch]);
+  const selected=audits.find(a=>a.id===selectedAuditId)||filtered[0]||null;
+  useEffect(()=>{if(selected&&selected.id!==selectedAuditId)setSelectedAuditId(selected.id)},[selected?.id]);
+  useEffect(()=>{const close=e=>e.key==='Escape'&&setReader(false);addEventListener('keydown',close);return()=>removeEventListener('keydown',close)},[]);
+  const continuity=selected?.previous_hash&&audits.find(a=>a.current_hash===selected.previous_hash);
+  const verify=async()=>{setChecking(true);try{setVerification(await verifyAuditChain())}finally{setChecking(false)}};
+  const sync=async()=>{setSyncing(true);setSyncMessage('');try{await refreshAudits();setSyncMessage('Ledger refreshed')}catch(error){setSyncMessage(error.message)}finally{setSyncing(false)}};
+  const pending=Object.values(auditStatuses).filter(s=>['processing','delayed'].includes(s.status)).length;
+  return <div className="ops-page">
+    <PageGuide title="Read the complete incident memorandum and follow its preserved record.">The document explains the automated intervention. The continuity view shows how records link together; human recommendations and final verdicts remain in Review Control.</PageGuide>
+    <section className="ops-statusline"><div><ShieldCheck size={15}/><strong>Append-only audit ledger</strong></div><span>{audits.length} records</span><span>{pending} processing</span>{verification&&<span>{verification.records_checked} links checked</span>}{admin&&<button className="verify-chain-action" onClick={verify} disabled={checking}>{checking?'Verifying chain…':'Verify ledger chain'}</button>}<button onClick={sync} disabled={syncing}><RefreshCw size={13} className={syncing?'spin':''}/>{syncing?'Refreshing…':'Refresh ledger'}</button></section>
+    {syncMessage&&<div className="sync-feedback" role="status">{syncMessage}</div>}
+    {verification&&<div className={`verification-line ${verification.is_valid?'is-valid':'is-invalid'}`}><strong>{verification.is_valid?'Chain continuity verified':'Continuity issue detected'}</strong><span>{verification.issue_count} issues · head {verification.head_hash?.slice(0,14)}… · checked {utc(verification.checked_at)}</span></div>}
+    <section className="vault-workspace">
+      <aside className="vault-records"><div className="queue-tools"><label className="ops-search"><Search size={14}/><input value={auditSearch} onChange={e=>{setAuditSearch(e.target.value);setSelectedAuditId(null)}} placeholder="Search card or report"/></label></div><div className="audit-index">{loading?<p>Loading ledger…</p>:filtered.length?filtered.map(a=><button key={a.id} className={selected?.id===a.id?'is-selected':''} onClick={()=>setSelectedAuditId(a.id)}><FileText size={15}/><span><strong>{a.card_id||'Unknown card'}</strong><small>{utc(a.timestamp)}</small></span><Badge tone={a.is_error?'warning':'neutral'}>{a.is_error?'issue':'recorded'}</Badge></button>):<EmptyState title="No records" message="Completed generated reports will appear in this index."/>}</div></aside>
+      <main className="vault-reading">{selected&&!selected.is_error?<><div className="reader-toolbar"><div><span className="eyebrow">Generated report</span><strong>Readable document view</strong></div><CopyButton text={selected.report_text}/><button className="button button--primary" onClick={()=>setReader(true)}><Expand size={14}/>Focus reader</button></div><Report record={selected}/></>:selected?<div className="report-error"><h2>Report generation did not complete</h2><p>{selected.report_text}</p></div>:<EmptyState title="Select an audit record" message="The complete generated memorandum opens here."/>}</main>
+      <aside className="vault-continuity"><div><span className="eyebrow">Ledger continuity</span><h3>{selected?(/^0{64}$/.test(selected.previous_hash)?'Genesis record':continuity?'Predecessor matched':'Predecessor outside view'):'No record selected'}</h3></div>{selected&&<><div className="chain-state"><Link2 size={17}/><span><strong>{continuity?'Hash reference resolved':'Recorded chain reference'}</strong><small>{continuity?`Points to record #${continuity.id}`:'Compare against the full verification result.'}</small></span></div><Hash label="Previous hash" value={selected.previous_hash}/><div className="hash-link"><i/><Link2 size={13}/><i/></div><Hash label="Current hash" value={selected.current_hash}/></>}</aside>
+    </section>
+    {reader&&selected&&<div className="report-reader-layer" role="dialog" aria-modal="true" aria-label="Compliance report reader"><div className="report-reader-shell"><header><div><span>Focused report reader</span><strong>{selected.card_id} · Record #{selected.id}</strong></div><CopyButton text={selected.report_text}/><button className="icon-button" onClick={()=>setReader(false)} aria-label="Close report"><X/></button></header><div className="report-reader-scroll"><Report record={selected}/></div></div></div>}
+  </div>;
 }

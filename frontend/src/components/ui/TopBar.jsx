@@ -1,17 +1,22 @@
-import { Command, Menu, RefreshCw } from 'lucide-react';
+import { LogOut, Menu, Play, RefreshCw } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
 
 const pageMeta = {
-  '/app/live': ['Live telemetry', 'Evaluate and monitor transaction decisions'],
-  '/app/incidents': ['Incident command', 'Triage blocked transactions and model signals'],
-  '/app/vault': ['Compliance vault', 'Review chain-linked regulatory records'],
+  '/app/transactions': ['Transaction stream', 'Inspect live model decisions and replay controlled traffic'],
+  '/app/reviews': ['Human review', 'Resolve model escalations with attributable judgement'],
+  '/app/vault': ['Audit vault', 'Read generated memoranda and verify ledger continuity'],
+  '/app/operations': ['Operations', 'Decision throughput, review pressure, and system exceptions'],
+  '/app/model-health': ['Model health', 'Distribution shift and human outcome monitoring'],
+  '/app/access': ['People & access', 'Manage the two-role operating boundary'],
 };
 
 export default function TopBar({ onMenu }) {
   const { pathname } = useLocation();
-  const { health, loading, hydrate, setCommandOpen } = useApp();
-  const [title, subtitle] = pageMeta[pathname] || pageMeta['/app/live'];
+  const { health, loading, hydrate, isDemoSession, demoStatus, setDemoControlOpen } = useApp();
+  const { user, logout } = useAuth();
+  const [title, subtitle] = pageMeta[pathname] || pageMeta['/app/reviews'];
 
   return (
     <header className="topbar">
@@ -20,13 +25,12 @@ export default function TopBar({ onMenu }) {
         <div><h1>{title}</h1><p>{subtitle}</p></div>
       </div>
       <div className="topbar-actions">
+        {isDemoSession && <button className={`live-demo-trigger ${demoStatus === 'running' ? 'is-running' : ''}`} onClick={() => setDemoControlOpen(true)}><Play size={14}/><span>{demoStatus === 'running' ? 'Demo running' : 'Run live demo'}</span></button>}
         <div className="health-label" aria-live="polite"><span className={`status-dot status-dot--${health}`} />{health === 'online' ? 'Systems operational' : health === 'checking' ? 'Checking systems' : 'Risk core unavailable'}</div>
-        <button className="command-trigger" onClick={() => setCommandOpen(true)} aria-label="Open command palette">
-          <Command size={15} /><span>Search</span><kbd>⌘ K</kbd>
-        </button>
-        <button className="icon-button" onClick={hydrate} disabled={loading} aria-label="Refresh workspace data">
+        <button className="icon-button" onClick={hydrate} disabled={loading} aria-label="Refresh workspace data" title="Refresh workspace data">
           <RefreshCw size={16} className={loading ? 'spin' : ''} />
         </button>
+        <button className="icon-button" onClick={logout} aria-label="Sign out" title="Sign out"><LogOut size={16} /></button>
       </div>
     </header>
   );

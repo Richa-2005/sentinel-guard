@@ -20,7 +20,7 @@ from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 import jwt  # noqa: E402
 from jwt.exceptions import InvalidTokenError  # noqa: E402
-from sqlalchemy import delete  # noqa: E402
+from sqlalchemy import text  # noqa: E402
 
 from app.config import settings  # noqa: E402
 from app.core.db_session import SessionLocal  # noqa: E402
@@ -54,7 +54,23 @@ class AuthenticationIntegrationTests(unittest.TestCase):
 
     def setUp(self) -> None:
         with SessionLocal() as session:
-            session.execute(delete(User))
+            # Other integration modules may seed immutable review history in the
+            # same process. Remove only users that are not referenced by it.
+            session.execute(
+                text(
+                    """
+                    DELETE FROM users
+                    WHERE id NOT IN (
+                        SELECT actor_user_id FROM review_actions
+                        WHERE actor_user_id IS NOT NULL
+                    )
+                    AND id NOT IN (
+                        SELECT assigned_to_user_id FROM review_cases
+                        WHERE assigned_to_user_id IS NOT NULL
+                    )
+                    """
+                )
+            )
             session.commit()
 
     def register_analyst(self, email: str = "analyst@example.com") -> dict:
@@ -176,7 +192,8 @@ class AuthenticationIntegrationTests(unittest.TestCase):
             headers=self.authorization(admin_token),
         )
         self.assertEqual(users.status_code, 200)
-        self.assertEqual(len(users.json()), 2)
+        returned_emails = {user["email"] for user in users.json()}
+        self.assertTrue({"analyst@example.com", "admin@example.com"} <= returned_emails)
 
         promoted = self.client.patch(
             f"/api/v1/auth/users/{analyst['id']}/role",
