@@ -134,3 +134,6 @@ Instructions.md
 *.sqlite-shm
 *.sqlite3-wal
 *.sqlite3-shm
+
+backend/.env
+backend/data/sentinel_storage.db

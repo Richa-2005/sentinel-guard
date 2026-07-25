@@ -209,10 +209,7 @@ async def evaluate_and_persist_transaction(
 
     is_off_hours_window = 1.0 if (1 <= current_time.hour <= 5) else 0.0
 
-    # Portfolio fraud bursts represent an already-observed behavioral attack,
-    # not a cold-start card. The model still calculates the decision normally;
-    # only the historical context is made deterministic for an explicit,
-    # authenticated demo identity.
+    
     (
         card_vel_10m,
         device_card_ratio_30m,
@@ -236,7 +233,7 @@ async def evaluate_and_persist_transaction(
     ]
     input_matrix = [raw_features]
 
-    # Execute heavy math transformations inside non-blocking threads
+
     loop = asyncio.get_running_loop()
     ensemble_prob, shap_payload = await loop.run_in_executor(
         ml_executor, compute_ml_and_shap, raw_features, input_matrix, 
@@ -254,7 +251,7 @@ async def evaluate_and_persist_transaction(
         "is_off_hours_window": is_off_hours_window
     }
 
-    # Write records directly into persistent transactions ledger frame blocks
+
     with db.connection() as conn:
         conn.execute("""
             INSERT INTO transactions_ledger (

@@ -136,8 +136,7 @@ class FinancialDataSynthesizer:
 
         df_normal["timestamp"] = normal_timestamps
 
-        # Roughly 2% of normal rows belong to legitimate shopping sprees:
-        # five rapid purchases on one card at one trusted merchant.
+       
         spree_group_size = 5
         spree_group_count = int(normal_rows * 0.02) // spree_group_size
         normal_card_row_indices = df_normal.groupby("card_token").indices
@@ -180,9 +179,6 @@ class FinancialDataSynthesizer:
             for device_number in range(1, max(1, fraud_rows // 5) + 1)
         ]
 
-        # Build fraud in bursts across off-hours and daylight. Bursts alternate
-        # between one-device/many-card rings and one-card/many-merchant tests.
-        # Cycling bursts across seven days distributes fraud chronologically.
         card_tokens_fraud = []
         device_id_fraud = []
         merchant_id_fraud = []

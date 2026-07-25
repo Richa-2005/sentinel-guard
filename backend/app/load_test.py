@@ -6,7 +6,7 @@ import numpy as np
 
 TARGET_URL = "http://127.0.0.1:8000/api/v1/evaluate"
 TOTAL_REQUESTS = 100
-CONCURRENCY_LIMIT = 10  # Max simultaneous worker pipes
+CONCURRENCY_LIMIT = 10 
 
 
 async def fire_transaction_packet(client:httpx.AsyncClient, request_id: int):

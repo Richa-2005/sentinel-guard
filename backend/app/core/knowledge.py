@@ -78,46 +78,45 @@ class KnowledgeBaseManager:
         Dynamically cross-reference metrics and search keywords across the text corpus
         to return isolated regulatory context blocks matching active threat profiles.
         """
-        # 1. Initialize a collection set to gather unique matching context chunks
+
         matched_chunks: list[str] = []
         search_keywords: set[str] = set()
 
-        # 2. Extract and scan the Merchant Category Code (MCC)
+       
         merchant_id = str(transaction_data.get("merchant_id", "")).strip()
         if merchant_id in self.mcc_registry:
             mcc_info = self.mcc_registry[merchant_id]
             category = mcc_info["category"]
             risk_level = mcc_info["risk_level"]
             
-            # Form an initial explicit context anchor from our O(1) registry map
+            
             mcc_context_string = (
                 f"INTEL: Inbound Merchant Category Code (MCC) [{merchant_id}] maps "
                 f"directly to the sector '{category}' with an assigned risk severity profile of: {risk_level}."
             )
             matched_chunks.append(mcc_context_string)
             
-            # Add keywords dynamically based on the merchant category profile
+            
             search_keywords.add(category.lower())
             search_keywords.add(risk_level.lower())
 
-        # 3. Access Hydrated Metrics and Map to Compliance Keywords
-        # Check if the device card tracking threshold limits were crossed
+        
         if float(hydrated_metrics.get("device_card_limit_crossed", 0.0)) == 1.0:
             search_keywords.update(["device", "multiplex", "hardware", "ring"])
 
-        # Check if short-term rolling velocity restrictions are breached
+        
         if int(hydrated_metrics.get("card_vel_10m", 0)) > 3:
             search_keywords.update(["velocity", "window", "consecutive", "testing"])
 
-        # Check if transaction magnitude crosses corporate spending ceilings
+        
         if int(transaction_data.get("amount_paise", 0)) >= 25000:
             search_keywords.update(["ceiling", "cap", "magnitude", "authorized"])
 
-        # Check if the transaction landed in the high-risk off-hours window
+        
         if float(hydrated_metrics.get("is_off_hours_window", 0.0)) == 1.0:
             search_keywords.update(["off-hours", "temporal", "boundary", "window"])
 
-        # 4. Comb the Master Text Corpus chunks for keyword intersections
+        
         for chunk in self.master_data_collection:
             chunk_lower = chunk.lower()
             # If any activated keyword hits this segment, extract it for the LLM prompt context
@@ -125,7 +124,7 @@ class KnowledgeBaseManager:
                 if chunk not in matched_chunks:
                     matched_chunks.append(chunk)
 
-        # 5. Fallback check: If no anomalies hit, load standard base compliance intros
+        
         if not matched_chunks:
             for chunk in self.master_data_collection:
                 if "introduction" in chunk.lower() or "objective" in chunk.lower():

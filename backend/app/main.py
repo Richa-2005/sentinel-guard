@@ -39,10 +39,11 @@ from app.services.risk_service import (
 )
 
 from app.services.log_service import fetch_audit_jobs, fetch_compliance_audits
+from fastapi.middleware.cors import CORSMiddleware
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Declare the globals we need to modify
+   
     global ensemble_gate
     global explainer_bridge
     global compliance_agent
@@ -50,14 +51,14 @@ async def lifespan(app: FastAPI):
 
     print("Booting up Sentinel Guard...")
 
-    # 1. Initialize DB and Seed Demo Data
+   
     initialize_database()
     seed_demo_data()
 
-    # 2. Validate Security
+   
     validate_auth_configuration()
 
-    # 3. Load Models into RAM
+    
     xgb_path = settings.DATA_DIR / "xgb_compliance_gate.json"
     lgb_path = settings.DATA_DIR / "lgb_compliance_gate.txt"
 
@@ -65,7 +66,6 @@ async def lifespan(app: FastAPI):
     explainer_bridge = TransactionExplainer(xgb_path, lgb_path)
     compliance_agent = ComplianceAgent()
 
-    # 4. Initialize internal db service & recover background jobs
     db.initialize()
 
     recovered_jobs = await asyncio.to_thread(
@@ -98,6 +98,14 @@ app = FastAPI(
     title="Sentinel Guard: Agentic FinTech Risk & Compliance Engine",
     version="1.0.0",
     lifespan=lifespan
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], 
+    allow_credentials=True,
+    allow_methods=["*"], 
+    allow_headers=["*"], 
 )
 
 app.include_router(auth_router)
