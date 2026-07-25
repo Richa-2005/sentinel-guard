@@ -4,10 +4,6 @@ import json
 import sqlite3
 from datetime import datetime, timezone
 
-from sqlalchemy import func, select, text, update
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
-
 from app.models.review import (
     ReviewAction,
     ReviewActionType,
@@ -34,6 +30,41 @@ class ReviewConflictError(RuntimeError):
 
 class ReviewerNotFoundError(LookupError):
     """Raised when an assignment target is missing or inactive."""
+
+
+def _row_to_case(row) -> ReviewCase | None:
+    if not row:
+        return None
+    return ReviewCase(
+        id=row["id"],
+        transaction_id=row["transaction_id"],
+        status=ReviewStatus(row["status"]),
+        priority=ReviewPriority(row["priority"]),
+        assigned_to_user_id=row["assigned_to_user_id"],
+        analyst_recommendation=ReviewDecision(row["analyst_recommendation"]) if row["analyst_recommendation"] else None,
+        final_decision=ReviewDecision(row["final_decision"]) if row["final_decision"] else None,
+        version=row["version"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+        resolved_at=row["resolved_at"],
+    )
+
+
+def _row_to_action(row) -> ReviewAction | None:
+    if not row:
+        return None
+    return ReviewAction(
+        id=row["id"],
+        case_id=row["case_id"],
+        actor_user_id=row["actor_user_id"],
+        action_type=ReviewActionType(row["action_type"]),
+        previous_status=ReviewStatus(row["previous_status"]) if row["previous_status"] else None,
+        resulting_status=ReviewStatus(row["resulting_status"]),
+        decision=ReviewDecision(row["decision"]) if row["decision"] else None,
+        reason=row["reason"],
+        case_version=row["case_version"],
+        created_at=row["created_at"],
+    )
 
 
 def ensure_review_case_for_blocked_transaction(
@@ -92,15 +123,20 @@ def ensure_review_case_for_blocked_transaction(
     return int(existing["id"])
 
 
-def get_review_case(session: Session, case_id: int) -> ReviewCase:
-    review_case = session.get(ReviewCase, case_id)
-    if review_case is None:
+def get_review_case(connection: sqlite3.Connection, case_id: int) -> ReviewCase:
+    row = connection.execute(
+        """
+        SELECT * FROM review_cases WHERE id = ?;
+        """,
+        (case_id,),
+    ).fetchone()
+    if row is None:
         raise ReviewNotFoundError("Review case not found")
-    return review_case
+    return _row_to_case(row)
 
 
 def list_review_cases(
-    session: Session,
+    connection: sqlite3.Connection,
     *,
     status: ReviewStatus | None = None,
     priority: ReviewPriority | None = None,
@@ -109,55 +145,63 @@ def list_review_cases(
     offset: int = 0,
 ) -> tuple[list[ReviewCase], int]:
     filters = []
+    params = []
     if status is not None:
-        filters.append(ReviewCase.status == status)
+        filters.append("status = ?")
+        params.append(status.value)
     if priority is not None:
-        filters.append(ReviewCase.priority == priority)
+        filters.append("priority = ?")
+        params.append(priority.value)
     if assigned_to_user_id is not None:
-        filters.append(ReviewCase.assigned_to_user_id == assigned_to_user_id)
+        filters.append("assigned_to_user_id = ?")
+        params.append(assigned_to_user_id)
 
-    count_statement = select(func.count()).select_from(ReviewCase).where(*filters)
-    total = int(session.scalar(count_statement) or 0)
-    statement = (
-        select(ReviewCase)
-        .where(*filters)
-        .order_by(ReviewCase.created_at.desc(), ReviewCase.id.desc())
-        .limit(limit)
-        .offset(offset)
-    )
-    return list(session.scalars(statement)), total
+    where_clause = ""
+    if filters:
+        where_clause = " WHERE " + " AND ".join(filters)
 
+    count_query = f"SELECT COUNT(*) AS cnt FROM review_cases{where_clause}"
+    count_row = connection.execute(count_query, params).fetchone()
+    total = int(count_row["cnt"] if count_row else 0)
 
-def get_case_actions(session: Session, case_id: int) -> list[ReviewAction]:
-    statement = (
-        select(ReviewAction)
-        .where(ReviewAction.case_id == case_id)
-        .order_by(ReviewAction.case_version, ReviewAction.id)
-    )
-    return list(session.scalars(statement))
+    query = f"SELECT * FROM review_cases{where_clause} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?"
+    rows = connection.execute(query, params + [limit, offset]).fetchall()
+    return [_row_to_case(r) for r in rows], total
 
 
-def get_transaction_context(session: Session, transaction_id: str) -> dict:
-    row = session.execute(
-        text(
-            """
-            SELECT
-                transaction_id,
-                card_id,
-                device_id,
-                merchant_id,
-                timestamp,
-                amount_paise,
-                ensemble_risk_score,
-                is_blocked,
-                hydrated_metrics,
-                shap_payload
-            FROM transactions_ledger
-            WHERE transaction_id = :transaction_id
-            """
-        ),
-        {"transaction_id": transaction_id},
-    ).mappings().one()
+def get_case_actions(connection: sqlite3.Connection, case_id: int) -> list[ReviewAction]:
+    rows = connection.execute(
+        """
+        SELECT * FROM review_actions
+        WHERE case_id = ?
+        ORDER BY case_version ASC, id ASC;
+        """,
+        (case_id,),
+    ).fetchall()
+    return [_row_to_action(r) for r in rows]
+
+
+def get_transaction_context(connection: sqlite3.Connection, transaction_id: str) -> dict:
+    row = connection.execute(
+        """
+        SELECT
+            transaction_id,
+            card_id,
+            device_id,
+            merchant_id,
+            timestamp,
+            amount_paise,
+            ensemble_risk_score,
+            is_blocked,
+            hydrated_metrics,
+            shap_payload
+        FROM transactions_ledger
+        WHERE transaction_id = ?
+        """,
+        (transaction_id,),
+    ).fetchone()
+    if row is None:
+        raise ReviewNotFoundError("Transaction context not found")
     return {
         **dict(row),
         "is_blocked": bool(row["is_blocked"]),
@@ -167,7 +211,7 @@ def get_transaction_context(session: Session, transaction_id: str) -> dict:
 
 
 def _transition(
-    session: Session,
+    connection: sqlite3.Connection,
     *,
     review_case: ReviewCase,
     expected_version: int,
@@ -188,55 +232,75 @@ def _transition(
 
     previous_status = review_case.status
     new_version = expected_version + 1
-    now = datetime.now(timezone.utc)
-    result = session.execute(
-        update(ReviewCase)
-        .where(
-            ReviewCase.id == review_case.id,
-            ReviewCase.version == expected_version,
-        )
-        .values(
-            status=resulting_status,
-            assigned_to_user_id=assigned_to_user_id,
-            analyst_recommendation=analyst_recommendation,
-            final_decision=final_decision,
-            version=new_version,
-            updated_at=now,
-            resolved_at=resolved_at,
-        )
-    )
-    if result.rowcount != 1:
-        session.rollback()
-        raise ReviewConflictError(
-            "Review case changed; refresh it before submitting again"
-        )
+    now_str = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    resolved_at_str = resolved_at.isoformat().replace("+00:00", "Z") if resolved_at else None
 
-    session.add(
-        ReviewAction(
-            case_id=review_case.id,
-            actor_user_id=actor_user_id,
-            action_type=action_type,
-            previous_status=previous_status,
-            resulting_status=resulting_status,
-            decision=decision,
-            reason=" ".join(reason.split()),
-            case_version=new_version,
-            created_at=now,
-        )
-    )
     try:
-        session.commit()
-    except IntegrityError as exc:
-        session.rollback()
+        cursor = connection.execute(
+            """
+            UPDATE review_cases
+            SET status = ?,
+                assigned_to_user_id = ?,
+                analyst_recommendation = ?,
+                final_decision = ?,
+                version = ?,
+                updated_at = ?,
+                resolved_at = ?
+            WHERE id = ? AND version = ?;
+            """,
+            (
+                resulting_status.value,
+                assigned_to_user_id,
+                analyst_recommendation.value if analyst_recommendation else None,
+                final_decision.value if final_decision else None,
+                new_version,
+                now_str,
+                resolved_at_str,
+                review_case.id,
+                expected_version,
+            )
+        )
+        if cursor.rowcount != 1:
+            raise ReviewConflictError(
+                "Review case changed; refresh it before submitting again"
+            )
+
+        connection.execute(
+            """
+            INSERT INTO review_actions (
+                case_id,
+                actor_user_id,
+                action_type,
+                previous_status,
+                resulting_status,
+                decision,
+                reason,
+                case_version,
+                created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """,
+            (
+                review_case.id,
+                actor_user_id,
+                action_type.value,
+                previous_status.value if previous_status else None,
+                resulting_status.value,
+                decision.value if decision else None,
+                " ".join(reason.split()),
+                new_version,
+                now_str,
+            )
+        )
+    except sqlite3.IntegrityError as exc:
         raise ReviewConflictError(
             "Review case changed; refresh it before submitting again"
         ) from exc
 
-    return get_review_case(session, review_case.id)
+    return get_review_case(connection, review_case.id)
 
 
 def claim_case(
-    session: Session,
+    connection: sqlite3.Connection,
     *,
     review_case: ReviewCase,
     reviewer: User,
@@ -247,7 +311,7 @@ def claim_case(
     if review_case.assigned_to_user_id is not None:
         raise ReviewTransitionError("Review case is already assigned")
     return _transition(
-        session,
+        connection,
         review_case=review_case,
         expected_version=expected_version,
         actor_user_id=reviewer.id,
@@ -259,7 +323,7 @@ def claim_case(
 
 
 def assign_case(
-    session: Session,
+    connection: sqlite3.Connection,
     *,
     review_case: ReviewCase,
     admin: User,
@@ -271,11 +335,12 @@ def assign_case(
         raise ReviewTransitionError(
             "Cases awaiting approval or already resolved cannot be assigned"
         )
-    assignee = session.get(User, assigned_to_user_id)
+    from app.services.auth_service import get_user_by_id
+    assignee = get_user_by_id(connection, assigned_to_user_id)
     if assignee is None or not assignee.is_active:
         raise ReviewerNotFoundError("Active reviewer not found")
     return _transition(
-        session,
+        connection,
         review_case=review_case,
         expected_version=expected_version,
         actor_user_id=admin.id,
@@ -287,7 +352,7 @@ def assign_case(
 
 
 def submit_decision(
-    session: Session,
+    connection: sqlite3.Connection,
     *,
     review_case: ReviewCase,
     reviewer: User,
@@ -301,7 +366,7 @@ def submit_decision(
         raise ReviewTransitionError("Case must be assigned to the acting reviewer")
 
     return _transition(
-        session,
+        connection,
         review_case=review_case,
         expected_version=expected_version,
         actor_user_id=reviewer.id,
@@ -315,7 +380,7 @@ def submit_decision(
 
 
 def reopen_case(
-    session: Session,
+    connection: sqlite3.Connection,
     *,
     review_case: ReviewCase,
     admin: User,
@@ -325,7 +390,7 @@ def reopen_case(
     if review_case.status is not ReviewStatus.RESOLVED:
         raise ReviewTransitionError("Only resolved cases can be reopened")
     return _transition(
-        session,
+        connection,
         review_case=review_case,
         expected_version=expected_version,
         actor_user_id=admin.id,
@@ -338,7 +403,7 @@ def reopen_case(
 
 
 def finalize_decision(
-    session: Session,
+    connection: sqlite3.Connection,
     *,
     review_case: ReviewCase,
     admin: User,
@@ -354,7 +419,7 @@ def finalize_decision(
             "Return the case for more evidence instead of resolving it"
         )
     return _transition(
-        session,
+        connection,
         review_case=review_case,
         expected_version=expected_version,
         actor_user_id=admin.id,
@@ -370,7 +435,7 @@ def finalize_decision(
 
 
 def return_for_evidence(
-    session: Session,
+    connection: sqlite3.Connection,
     *,
     review_case: ReviewCase,
     admin: User,
@@ -381,7 +446,7 @@ def return_for_evidence(
     if review_case.status is not ReviewStatus.AWAITING_APPROVAL:
         raise ReviewTransitionError("Only recommendations awaiting approval can be returned")
     return _transition(
-        session,
+        connection,
         review_case=review_case,
         expected_version=expected_version,
         actor_user_id=admin.id,
@@ -394,7 +459,7 @@ def return_for_evidence(
 
 
 def override_decision(
-    session: Session,
+    connection: sqlite3.Connection,
     *,
     review_case: ReviewCase,
     admin: User,
@@ -405,7 +470,7 @@ def override_decision(
     if review_case.status is not ReviewStatus.RESOLVED:
         raise ReviewTransitionError("Only resolved decisions can be corrected")
     return _transition(
-        session,
+        connection,
         review_case=review_case,
         expected_version=expected_version,
         actor_user_id=admin.id,
@@ -420,9 +485,9 @@ def override_decision(
     )
 
 
-def list_reviewer_summaries(session: Session) -> list[dict[str, object]]:
+def list_reviewer_summaries(connection: sqlite3.Connection) -> list[dict[str, object]]:
     """Return administrator-facing workload and outcome summaries per analyst."""
-    rows = session.execute(text("""
+    rows = connection.execute("""
         SELECT
             users.id AS user_id,
             users.full_name,
@@ -446,7 +511,7 @@ def list_reviewer_summaries(session: Session) -> list[dict[str, object]]:
         WHERE users.role = 'analyst'
         GROUP BY users.id, users.full_name, users.email, users.is_active
         ORDER BY users.full_name;
-    """)).mappings().all()
+    """).fetchall()
     summaries = []
     for row in rows:
         finalized = int(row["finalized_cases"] or 0)

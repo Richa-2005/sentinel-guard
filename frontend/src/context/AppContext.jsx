@@ -8,6 +8,13 @@ const MAX_TRANSACTIONS = 1000;
 const AUDIT_POLL_INTERVAL = 10000;
 const AUDIT_POLL_TIMEOUT = 240000;
 
+function safeUUID() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'f' + Math.random().toString(36).substring(2, 15) + '-' + Date.now().toString(36);
+}
+
 function transactionKey(entry) {
   return entry.transaction_id || [entry.timestamp, entry.card_id, entry.device_id, entry.merchant_id, entry.amount_paise].join(':');
 }
@@ -143,7 +150,7 @@ export function AppProvider({ children }) {
     if (demoBusyRef.current) return null;
     demoBusyRef.current = true;
     try {
-      const transaction_id = payload.transaction_id || `guided-${crypto.randomUUID()}`;
+      const transaction_id = payload.transaction_id || `guided-${safeUUID()}`;
       const requestPayload = { ...payload, transaction_id, amount_paise: Number(payload.amount_paise) };
       const result = await evaluateTransaction(requestPayload);
       const entry = addTransaction({ ...requestPayload, ...result, timestamp: new Date().toISOString() });
@@ -157,7 +164,7 @@ export function AppProvider({ children }) {
       }, ...previous].slice(0, 8));
       return entry;
     } catch (error) {
-      setDemoEvents((previous) => [{ id: crypto.randomUUID(), source, error: error.message, timestamp: new Date().toISOString() }, ...previous].slice(0, 8));
+      setDemoEvents((previous) => [{ id: safeUUID(), source, error: error.message, timestamp: new Date().toISOString() }, ...previous].slice(0, 8));
       return null;
     } finally {
       demoBusyRef.current = false;

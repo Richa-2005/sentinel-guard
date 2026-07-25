@@ -3,7 +3,6 @@ import pandas as pd
 import json
 from concurrent.futures import ThreadPoolExecutor
 
-# Instantiate a dedicated core thread pool for compute-heavy ML matrices
 ml_executor = ThreadPoolExecutor(max_workers=4)
 
 def compute_ml_and_shap(raw_features, input_matrix, ensemble_gate, explainer_bridge):
@@ -21,12 +20,10 @@ def compute_ml_and_shap(raw_features, input_matrix, ensemble_gate, explainer_bri
     ]
     input_df = pd.DataFrame([raw_features], columns=feature_order)
 
-    # Execute dual tree scoring branch predictions
     p_xgb = float(ensemble_gate.xgb.predict_proba(input_df)[:, 1][0])
     p_lgb = float(ensemble_gate.lgb.predict(input_df)[0])
     ensemble_prob = (p_xgb + p_lgb) / 2
     
-    #Execute intense mathematical SHAP vectors
     shap_json_str = explainer_bridge.generate_explanation(input_df)
     shap_payload = json.loads(shap_json_str)
     

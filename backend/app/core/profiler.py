@@ -20,9 +20,7 @@ class DatasetProfiler:
     def execute_audit(self):
         """Loads features and runs statistical calculations on target splits."""
 
-        # 1. Load the sorted data via your pipeline
         self.pipeline.load_and_sort_ledger()
-        # 2. Compute sliding behavioral attributes
         self.data = self.pipeline.compute_window_features()
 
         total_rows = len(self.data)
@@ -47,4 +45,3 @@ if __name__ == "__main__":
     profiler = DatasetProfiler(path_data = 'data/transactions.csv')
     fraud_percentage, scale_pos_weight = profiler.execute_audit()
     
-

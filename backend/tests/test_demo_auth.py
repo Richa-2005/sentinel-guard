@@ -4,29 +4,45 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
-
+import sqlite3
 
 TEST_DIRECTORY = tempfile.TemporaryDirectory(prefix="sentinel-demo-tests-")
 BACKEND_DIRECTORY = Path(__file__).resolve().parents[1]
-os.environ["SENTINEL_DATABASE_PATH"] = str(Path(TEST_DIRECTORY.name) / "demo.db")
+db_path = Path(TEST_DIRECTORY.name) / "demo.db"
+os.environ["SENTINEL_DATABASE_PATH"] = str(db_path)
 os.environ["JWT_SECRET_KEY"] = "test-only-secret-key-with-at-least-32-characters"
 os.environ["DEMO_MODE"] = "true"
 
-from alembic import command  # noqa: E402
-from alembic.config import Config  # noqa: E402
 from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
-from sqlalchemy import text  # noqa: E402
 
 from app.config import settings  # noqa: E402
-from app.core.db_session import SessionLocal  # noqa: E402
+from app.core.database import initialize_database  # noqa: E402
 from app.routers.auth import router as auth_router  # noqa: E402
 
 
-alembic_config = Config(str(BACKEND_DIRECTORY / "alembic.ini"))
-command.upgrade(alembic_config, "head")
+db = initialize_database(db_path)
+
+def override_get_db_conn():
+    connection = sqlite3.connect(db_path)
+    connection.row_factory = sqlite3.Row
+    try:
+        connection.execute("PRAGMA journal_mode=WAL;")
+        connection.execute("PRAGMA synchronous=NORMAL;")
+        connection.execute("PRAGMA foreign_keys=ON;")
+        connection.execute("PRAGMA busy_timeout=30000;")
+        yield connection
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+
+from app.core.auth_dependencies import get_db_conn
 test_app = FastAPI()
 test_app.include_router(auth_router)
+test_app.dependency_overrides[get_db_conn] = override_get_db_conn
 
 
 class DemoAuthenticationTests(unittest.TestCase):
@@ -59,30 +75,41 @@ class DemoAuthenticationTests(unittest.TestCase):
         self.assertEqual(analyst.json()["user"]["role"], "analyst")
         self.assertEqual(admin.json()["user"]["role"], "admin")
 
-        with SessionLocal() as session:
-            self.assertEqual(
-                session.scalar(
-                    text(
-                        "SELECT COUNT(*) FROM users "
-                        "WHERE email LIKE 'demo.%@sentinelguard.dev'"
-                    )
-                ),
-                2,
-            )
-            self.assertEqual(session.scalar(text("SELECT COUNT(*) FROM transactions_ledger WHERE transaction_id LIKE 'demo-v2-%'")), 72)
-            refreshed_windows = session.execute(text("""
+        with db.connection() as conn:
+            user_count = conn.execute(
+                "SELECT COUNT(*) FROM users WHERE email LIKE 'demo.%@sentinelguard.dev'"
+            ).fetchone()[0]
+            self.assertEqual(user_count, 2)
+
+            tx_count = conn.execute(
+                "SELECT COUNT(*) FROM transactions_ledger WHERE transaction_id LIKE 'demo-v2-%'"
+            ).fetchone()[0]
+            self.assertEqual(tx_count, 72)
+
+            refreshed_windows = conn.execute("""
                 SELECT
                     SUM(CASE WHEN datetime(timestamp) >= datetime('now', '-24 hours') THEN 1 ELSE 0 END) AS current_count,
                     SUM(CASE WHEN datetime(timestamp) < datetime('now', '-24 hours')
                               AND datetime(timestamp) >= datetime('now', '-48 hours') THEN 1 ELSE 0 END) AS previous_count
                 FROM transactions_ledger
                 WHERE transaction_id LIKE 'demo-v2-%'
-            """)).mappings().one()
+            """).fetchone()
             self.assertGreaterEqual(refreshed_windows["current_count"], 30)
             self.assertGreaterEqual(refreshed_windows["previous_count"], 30)
-            self.assertEqual(session.scalar(text("SELECT COUNT(*) FROM review_cases WHERE transaction_id LIKE 'demo-v2-%'")), 6)
-            self.assertEqual(session.scalar(text("SELECT COUNT(*) FROM audit_vault WHERE transaction_id LIKE 'demo-v2-%'")), 5)
-            shortest_report = session.scalar(text("SELECT MIN(length(compliance_memo)) FROM audit_vault WHERE transaction_id LIKE 'demo-v2-%'"))
+
+            case_count = conn.execute(
+                "SELECT COUNT(*) FROM review_cases WHERE transaction_id LIKE 'demo-v2-%'"
+            ).fetchone()[0]
+            self.assertEqual(case_count, 6)
+
+            vault_count = conn.execute(
+                "SELECT COUNT(*) FROM audit_vault WHERE transaction_id LIKE 'demo-v2-%'"
+            ).fetchone()[0]
+            self.assertEqual(vault_count, 5)
+
+            shortest_report = conn.execute(
+                "SELECT MIN(length(compliance_memo)) FROM audit_vault WHERE transaction_id LIKE 'demo-v2-%'"
+            ).fetchone()[0]
             self.assertGreater(shortest_report, 1000)
 
 

@@ -5,12 +5,13 @@ trail
 
 import json
 import re
-import requests
 from typing import TypedDict, Dict, Any
 from langgraph.graph import StateGraph, END,START
 
 from app.config import settings
 from app.core.knowledge import KnowledgeBaseManager
+from langchain_groq import ChatGroq
+from app.config import settings
 
 kb_manager = KnowledgeBaseManager()
 
@@ -67,9 +68,6 @@ class ComplianceGraphState(TypedDict):
     forensic_analysis_text: str
     regulatory_context_text: str
     final_audit_report_text: str
-    ollama_base_url: str
-    ollama_model: str
-    ollama_timeout_seconds: float
 
 def textForensics(state : ComplianceGraphState) -> ComplianceGraphState:
     """
@@ -150,9 +148,6 @@ def legalVerdict(state : ComplianceGraphState) -> ComplianceGraphState:
     raw_tx = state.get("raw_transaction", {})
     forensics = state.get("forensic_analysis_text", "")
     reg_context = state.get("regulatory_context_text", "")
-    ollama_base_url = state["ollama_base_url"]
-    ollama_model = state["ollama_model"]
-    ollama_timeout_seconds = state["ollama_timeout_seconds"]
 
     llm_prompt = f"""
 You write formal internal fraud-risk incident memoranda.
@@ -192,30 +187,17 @@ OUTPUT CONTRACT — FOLLOW EXACTLY:
 
 ## D. Mitigation and Actionable Defense Roadmap
 """
-    
-    payload = { 
-        "model": ollama_model,
-        "prompt": llm_prompt,
-        "stream": False,
-        "keep_alive": "10m",
-        "options": {
-            "temperature": 0.1,
-            "num_predict": 900,
-        },
-    }
+
+    llm = ChatGroq(
+        model="llama-3.1-8b-instant", 
+        temperature=0.1, 
+        api_key=settings.GROQ_API_KEY
+    )
 
     try:
-        response = requests.post(
-            ollama_base_url,
-            json=payload,
-            timeout=ollama_timeout_seconds,
-        )
-        response.raise_for_status()
-
-        compiled_report = response.json().get("response")
-        if not compiled_report:
-            raise RuntimeError("LLM returned an empty compliance memo")
-        compiled_report = normalize_generated_report(compiled_report)
+        
+        response = llm.invoke(llm_prompt)
+        compiled_report = normalize_generated_report(response.content)
         if len(compiled_report.strip()) < 400 or any(
             section not in compiled_report.upper() for section in REPORT_SECTIONS
         ):
@@ -223,10 +205,8 @@ OUTPUT CONTRACT — FOLLOW EXACTLY:
         if re.search(r"(?m)^\s*\|.+\|\s*$", compiled_report):
             raise RuntimeError("Generated compliance memo used an unsupported table format")
 
-    except requests.RequestException as error:
-        raise RuntimeError(
-            f"Compliance memo generation failed: {error}"
-        ) from error
+    except Exception as error:
+        raise RuntimeError(f"Compliance memo generation failed : {error}") from error
     
     state["final_audit_report_text"] = compiled_report
 
@@ -247,26 +227,12 @@ CompilanceApp = graph.compile()
 
 
 class ComplianceAgent:
-    def __init__(
-        self,
-        ollama_base_url: str | None = None,
-        model_name: str | None = None,
-        timeout_seconds: float | None = None,
-    ):
-        self.ollama_base_url = ollama_base_url or settings.OLLAMA_BASE_URL
-        self.model_name = model_name or settings.OLLAMA_MODEL
-        self.timeout_seconds = (
-            timeout_seconds
-            if timeout_seconds is not None
-            else settings.OLLAMA_TIMEOUT_SECONDS
-        )
 
     def run_graph_audit(self, transaction_data: dict, hydrated_metrics: dict, shap_payload: dict) -> str:
         """
         Public entrypoint interface executing our compiled multi-node LangGraph DAG.
         Returns the generated compliance audit memo.
         """
-        # Initialize the state schema matching our TypedDict format requirement
         initial_state: ComplianceGraphState = {
             "raw_transaction": transaction_data,
             "hydrated_metrics": hydrated_metrics,
@@ -274,13 +240,8 @@ class ComplianceAgent:
             "forensic_analysis_text": "",
             "regulatory_context_text": "",
             "final_audit_report_text": "",
-            "ollama_base_url": self.ollama_base_url,
-            "ollama_model": self.model_name,
-            "ollama_timeout_seconds": self.timeout_seconds,
         }
         
-        # Execute the compiled LangGraph App engine thread wrapper
         final_state = CompilanceApp.invoke(initial_state)
         
-        # Extract the completed compliance memo
         return final_state.get("final_audit_report_text", "Error executing state DAG.")

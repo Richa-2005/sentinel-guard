@@ -11,10 +11,13 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from jwt.exceptions import InvalidTokenError
+from app.core.seed import seed_demo_data
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from app.core.database import initialize_database
 
 from app.config import settings
-from app.core.auth_dependencies import CurrentUser, get_current_user, require_admin
-from app.core.db_session import SessionLocal
+from app.core.auth_dependencies import CurrentUser, get_current_user
 from app.core.security import decode_access_token, validate_auth_configuration
 from app.models.model import TransactionPayload
 from app.routers.audits import router as audits_router
@@ -23,12 +26,10 @@ from app.routers.monitoring import router as monitoring_router
 from app.routers.reviews import router as reviews_router
 from app.services.auth_service import get_user_by_id
 
-# Core Systems Infrastructure
 from app.core.ensemble import FinancialEnsembleGate
 from app.core.explainer import TransactionExplainer
 from app.core.agent import ComplianceAgent
 
-# Modular Custom Business Logic Services
 from app.services.websocket_service import ws_manager
 from app.services.risk_service import (
     audit_job_dispatcher,
@@ -39,31 +40,24 @@ from app.services.risk_service import (
 
 from app.services.log_service import fetch_audit_jobs, fetch_compliance_audits
 
-app = FastAPI(
-    title="Sentinel Guard: Agentic FinTech Risk & Compliance Engine",
-    version="1.0.0",
-)
-app.include_router(auth_router)
-app.include_router(reviews_router)
-app.include_router(audits_router)
-app.include_router(monitoring_router)
-
-# Global Framework State Anchors
-ensemble_gate = None
-explainer_bridge = None
-compliance_agent = None
-audit_dispatcher_task = None
-
-
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Declare the globals we need to modify
     global ensemble_gate
     global explainer_bridge
     global compliance_agent
     global audit_dispatcher_task
 
+    print("Booting up Sentinel Guard...")
+
+    # 1. Initialize DB and Seed Demo Data
+    initialize_database()
+    seed_demo_data()
+
+    # 2. Validate Security
     validate_auth_configuration()
 
+    # 3. Load Models into RAM
     xgb_path = settings.DATA_DIR / "xgb_compliance_gate.json"
     lgb_path = settings.DATA_DIR / "lgb_compliance_gate.txt"
 
@@ -71,6 +65,7 @@ async def startup_event():
     explainer_bridge = TransactionExplainer(xgb_path, lgb_path)
     compliance_agent = ComplianceAgent()
 
+    # 4. Initialize internal db service & recover background jobs
     db.initialize()
 
     recovered_jobs = await asyncio.to_thread(
@@ -78,10 +73,7 @@ async def startup_event():
     )
 
     if recovered_jobs:
-        print(
-            f"[Audit Recovery] Requeued {recovered_jobs} "
-            "interrupted audit jobs."
-        )
+        print(f"[Audit Recovery] Requeued {recovered_jobs} interrupted audit jobs.")
 
     audit_dispatcher_task = asyncio.create_task(
         audit_job_dispatcher(
@@ -91,6 +83,43 @@ async def startup_event():
     )
 
     print("Clean Gateway Architecture activated successfully.")
+    
+    yield 
+    
+    print("Shutting down background tasks...")
+    if audit_dispatcher_task is not None:
+        audit_dispatcher_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await audit_dispatcher_task
+        audit_dispatcher_task = None
+
+
+app = FastAPI(
+    title="Sentinel Guard: Agentic FinTech Risk & Compliance Engine",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+app.include_router(auth_router)
+app.include_router(reviews_router)
+app.include_router(audits_router)
+app.include_router(monitoring_router)
+
+ensemble_gate = None
+explainer_bridge = None
+compliance_agent = None
+audit_dispatcher_task = None
+
+@app.get("/healthz", include_in_schema=False)
+def healthcheck():
+    """Confirm that the API process and inference components are initialized."""
+    ready = all(
+        component is not None
+        for component in (ensemble_gate, explainer_bridge, compliance_agent)
+    )
+    if not ready:
+        raise HTTPException(status_code=503, detail="Service is starting")
+    return {"status": "ok"}
 
 
 @app.on_event("shutdown")
@@ -125,8 +154,8 @@ async def websocket_endpoint(websocket: WebSocket):
             return
 
         user_id = decode_access_token(token)
-        with SessionLocal() as session:
-            user = get_user_by_id(session, user_id)
+        with db.connection() as conn:
+            user = get_user_by_id(conn, user_id)
             if user is None or not user.is_active:
                 await websocket.close(code=1008, reason="Authentication failed")
                 return
@@ -206,20 +235,6 @@ def get_audits():
 def get_audit_jobs():
     """Return durable audit generation and retry statuses."""
     return fetch_audit_jobs(db)
-
-
-@app.get("/api/v1/debug-fraud-sample", dependencies=[Depends(require_admin)])
-def get_fraud_sample():
-    try:
-        from app.core.trainer import FraudModelTrainer
-        trainer = FraudModelTrainer("data/transactions.csv")
-        _ = trainer.prepare_datasets()
-        fraud_rows = trainer.X_test[trainer.y_test == 1]
-        if not fraud_rows.empty:
-            return {"msg": "Send matrix sample payload via curl", "payload": fraud_rows.head(1).to_dict(orient="records")[0]}
-        return {"error": "No partition vectors found."}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":

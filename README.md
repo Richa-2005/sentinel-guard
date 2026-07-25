@@ -1,263 +1,222 @@
+# Sentinel Guard
 
-# Sentinel Guard: Autonomous Real-Time Fraud Threat Mitigation Matrix Core
+Sentinel Guard is a portfolio-grade fraud operations platform that combines
+real-time transaction scoring, explainable ensemble decisions, human review,
+model monitoring, and tamper-evident compliance records.
 
-An enterprise-grade, high-throughput financial risk core designed to intercept, evaluate, and audit transactional telemetry in mid-flight. Sentinel Guard fuses sub-10ms machine learning ensemble inferences with an asynchronous, multi-agent legal reasoning engine orchestrated via LangGraph. 
+The project is designed around two authenticated roles:
 
-Rather than treating fraud detection as an isolated classification problem, this platform provides a complete corporate risk command center: dynamically tracking sliding behavioral anomalies, storing system metrics inside a persistent transaction-safe engine, generating cross-referenced regulatory audit memos via localized LLMs, and securing logs within an immutable cryptographic hash chain.
+- **Analyst** — investigates assigned blocked transactions and submits an
+  evidence-backed recommendation.
+- **Administrator** — assigns cases, records the final verdict, monitors the
+  model and review operation, verifies the audit chain, and manages access.
 
----
+> Sentinel Guard uses synthetic data and demonstration policy fixtures. It is
+> not approved for real payment authorization, regulatory filing, or legal
+> decision-making.
 
-## System Topology & Data Pipeline
-
-The following architectural model isolates the low-latency transactional execution path from the data-heavy compliance auditing queues to prevent API gateway leakage or connection lag:
-
-
-```
-
-                                [ INBOUND TRANSACTION API REQUEST ]
-                                              │
-                                              ▼
-                                ┌───────────────────────────────┐
-                                │ Sub-10ms Sync Engine Pass     │ ──► [ Writes Features to SQLite WAL ]
-                                │ - Calculates Velocity Metrics │
-                                │ - Evaluates Model Ensemble    │
-                                └───────────────────────────────┘
-                                              │
-                                    (Is Blocked == True)
-                                              │
-                                              ▼
-                                ┌───────────────────────────────┐
-                                │ Async Background Thread Shunt │
-                                └───────────────────────────────┘
-                                              │
-                                              ▼
-              ┌────────────────────────────────────────────────────────────────────────┐
-              │            4-NODE LANGGRAPH STATE MACHINE AUDITING DIRECTORY           │
-              │                                                                        │
-              │  [Node 1: textForensics] ──► Extracts XGB/LGB SHAP Split Consensus     │
-              │                                      │                                 │
-              │  [Node 2: crossRefRAG]   ──► Queries synthetic compliance fixtures     │
-              │                                      │                                 │
-              │  [Node 3: legalVerdict]  ──► Compiles Structured Memo via Llama 3.1    │
-              │                                      │                                 │
-              │  [Node 4: cryptLedger]   ──► Chains Record using SHA-256 Checksums     │
-              └────────────────────────────────────────────────────────────────────────┘
-                                          │
-                                          ▼
-                             [ IMMUTABLE FORENSIC AUDIT LOG ]
-
-```
-
----
-
-## The Tech Stack Core
-
-| Layer | Component | Technical Selection & Rationale |
-| :--- | :--- | :--- |
-| **Backend Framework** | FastAPI | Async event-driven architecture, processing high-concurrency requests with sub-10ms execution gates. |
-| **Storage Engine** | SQLite (WAL Mode) | Persistent transactional ledger with Write-Ahead Logging to maximize concurrent reads/writes under heavy simulation stress. |
-| **ML Engine Matrix** | XGBoost & LightGBM | Blended model ensemble utilizing weighted probability trees to evaluate non-linear risk shapes. |
-| **Explainability Core** | SHAP (SHapley Additive exPlanations) | Translates raw tree decisions into mathematical feature contributions for transparent model audits. |
-| **Agent State Machine**| LangGraph | Structured Directed Acyclic Graph (DAG) managing immutable state transitions across legal audit nodes. |
-| **Knowledge Base (RAG)**| In-Memory Regex Chunking | Targeted paragraph retrieval across clearly labelled synthetic compliance fixtures and an MCC registry. |
-| **LLM Execution Node** | Ollama (Llama 3.1) | Localized inference execution node ensuring strict data privacy and enterprise zero-data leakage compliance. |
-| **Frontend Dashboard** | React & Tailwind CSS | Modern, dark cyber-command dashboard featuring glowing telemetry gauges and live stream simulators. |
-
----
-
-## Core System Specifications
-
-### Low-Latency Analytical Feature Hydration
-The system references real-time and historical transactions to calculate stateful parameters on the fly:
-* `card_vel_10m`: Tracks rapid consecutive swipes within a short 10-minute sliding ledger window to catch programmatic script leaks.
-* `device_card_ratio_30m`: Correlates how many unique payment cards are mapping to a single hardware device fingerprint, exposing distributed fraud rings.
-* `is_off_hours_window`: Flags transactions hitting the gateway inside the high-risk 01:00 AM - 05:00 AM temporal boundary.
-
-### Model Consensus & Multi-Agent Legal Reasoning
-When a high-risk event is tripped, the background worker launches a 4-node LangGraph network:
-1. **`textForensics`**: Combes individual model SHAP maps to verify tree consensus. Flags an `ARCHITECTURAL DIVERGENCE ALERT` if XGBoost and LightGBM output contradictory node directions.
-2. **`crossRefRAG`**: Cross-references active metrics against synthetic RBI/Visa-style demonstration fixtures and a 334-row indexed **Merchant Category Code (MCC)** directory. The fixtures are not official legal sources.
-3. **`legalVerdict`**: Prompts the localized Llama core to compile a structured demonstration compliance memo.
-4. **`cryptLedger`**: Automates a linked-list chain. It hashes the report text bound with the preceding row’s checksum signature, generating a tamper-evident audit ledger on disk.
-
-### Human-in-the-Loop Review
-
-Blocked model decisions automatically enter an authenticated review queue.
-Analysts can claim cases and submit reasoned dispositions; administrators can
-assign, reopen, and override cases. Original model output is never rewritten,
-and every workflow transition is stored in a database-enforced append-only
-action history. Clients submit the case `version` with every transition so a
-stale browser cannot overwrite another reviewer's work.
-
-### Audit-Chain Verification
-
-Authenticated users can call `GET /api/v1/audits/verify` to recompute the
-complete audit vault from its genesis hash. The verifier checks every stored
-digest, every previous-hash link, the chain head, and hash formatting, then
-returns a structured integrity report with the first invalid record and bounded
-issue details.
-
-### Operational Model Monitoring
-
-Administrators can call `GET /api/v1/monitoring/model?window_hours=24` for a
-time-windowed report covering prediction volume, block rate, risk-score
-distribution, human-review coverage and outcomes, resolution latency, and
-recent-versus-previous score-distribution PSI. Drift is reported as
-`insufficient_data` until both windows contain at least 30 predictions; this is
-operational monitoring rather than a claim of real-world model accuracy.
-
----
-
-## 📂 Repository Directory Layout
+## Architecture
 
 ```text
-sentinel-guard/
-├── backend/
-│   ├── app/
-│   │   ├── core/
-│   │   │   ├── agent.py          # LangGraph Workflow DAG definitions & Ollama calls
-│   │   │   ├── database.py       # SQLite connection layer and WAL initialization
-│   │   │   ├── explainer.py      # SHAP translation matrix bridge
-│   │   │   ├── knowledge.py      # KnowledgeBaseManager corpus segmenter & RAG matcher
-│   │   │   └── trainer.py        # XGB/LGB model training pipeline & feature calibration
-│   │   └── main.py               # FastAPI router paths, worker pool, & endpoints
-│   └── data/
-│       ├── corporate_policy.txt  # Internal corporate threshold ceilings
-│       ├── rbi_circular.txt      # Synthetic RBI-style demonstration fixture
-│       ├── network_tos.txt       # Synthetic card-network demonstration fixture
-│       └── mcc_codes.csv         # Structured 334-row industry sector risk lookup directory
-└── frontend/
-    └── src/
-        ├── components/
-        │   ├── LandingWelcome.jsx # Onboarding Quick-Start tour page
-        │   ├── RealTimeStream.jsx # Live sandbox transaction forge & traffic simulator
-        │   ├── IncidentCenter.jsx # Blocked logs list with tree model feature dials
-        │   └── ComplianceVault.jsx# Cryptographically chained Markdown audit reviews
-        └── hooks/
-            └── useTrafficSimulator.js # Drives the auto-traffic requests sequence loop
-
+Browser
+  │
+  ▼
+Nginx / React SPA
+  ├── /api/* ───────────────► FastAPI
+  └── /ws/* ────────────────► authenticated WebSocket
+                                  │
+                                  ├── XGBoost + LightGBM ensemble
+                                  ├── SHAP model explanations
+                                  ├── SQLite transaction/review ledger
+                                  └── durable single-report worker
+                                           │
+                                           ▼
+                                      Ollama / Llama 3.1
+                                           │
+                                           ▼
+                                  SHA-256 linked audit vault
 ```
 
----
+The transaction response path performs feature hydration, model inference,
+SHAP explanation, persistence, review-case creation, and WebSocket delivery.
+Blocked transactions create durable report jobs. A single background worker
+processes those jobs so local model generation cannot overload the API or the
+model server.
 
-## Quick-Start Installation & Setup
+## Main capabilities
 
-### 1. Prerequisites
+- JWT authentication with analyst and administrator authorization
+- Public analyst registration and separately provisioned administrator access
+- XGBoost and LightGBM probability ensemble with calibrated decision threshold
+- Stateful velocity, device/card, merchant, and off-hours features
+- Separate per-model SHAP evidence
+- Authenticated live transaction delivery over WebSocket
+- Durable audit jobs with retry and interrupted-job recovery
+- Structured compliance memoranda generated through a local model service
+- Downloadable Markdown reports
+- Analyst recommendation and administrator final-decision workflow
+- Optimistic case versioning to prevent stale updates
+- Database-enforced append-only review history
+- SHA-256 linked audit records with chain verification
+- Prediction, review, latency, block-rate, and PSI monitoring
+- UTC timestamps as the canonical audit timeline
+- Seeded, role-specific portfolio demonstration mode
+- Alembic database migrations
+- Dockerized frontend, backend, model service, and persistent volumes
 
-Ensure you have Python 3.10+, Node.js 18+, and [Ollama](https://ollama.com) installed locally.
+## Runtime stack
 
-### 2. Configure the LLM Node
+| Layer | Technology |
+| --- | --- |
+| Frontend | React, Vite, Nginx |
+| API and WebSocket | FastAPI, Uvicorn |
+| Persistence | SQLite WAL, SQLAlchemy, Alembic |
+| Classification | XGBoost, LightGBM |
+| Explainability | SHAP |
+| Report workflow | LangGraph |
+| Local generation | Ollama with Llama 3.1 |
+| Container orchestration | Docker Compose |
 
-Boot your terminal and download the required model weight layer to your local Ollama registry instance:
+## Model assets
+
+The small inference artifacts and synthetic knowledge fixtures required for a
+reproducible clone are versioned under `backend/data/`. Generated datasets and
+runtime databases are excluded from Git.
+
+Image builds verify `backend/data/artifacts.sha256`; a checksum mismatch stops
+the backend image build. `requirements-runtime.txt` contains the production
+dependency set, while `requirements.txt` retains the broader local
+development and training environment. Detailed model scope, evaluation results, and
+limitations are documented in
+[`backend/data/MODEL_CARD.md`](backend/data/MODEL_CARD.md).
+
+## Complete Docker deployment
+
+### Requirements
+
+- Docker Engine with Docker Compose v2
+- Approximately 8 GB of free memory
+- Approximately 8 GB of free disk space for images and the local model
+
+### Configuration
 
 ```bash
-ollama pull llama3.1
-
+cp .env.example .env
+openssl rand -hex 32
 ```
 
-### 3. Backend Setup
+Store the generated value as `JWT_SECRET_KEY` in the untracked root `.env`.
+Set `DEMO_MODE=true` only for the public portfolio demonstration.
 
-Navigate into the backend workspace, set up your virtual environment, and activate the server:
+### Start
+
+```bash
+docker compose up --build
+```
+
+On the first start, Compose downloads the configured Ollama image and model.
+The model is stored in the `sentinel-guard-models` volume and is reused on
+subsequent starts.
+
+Open:
+
+- Application: `http://localhost:8080`
+- API documentation through the frontend gateway: `http://localhost:8080/docs`
+
+Compose runs four coordinated services:
+
+1. `ollama` — persistent local inference server
+2. `model-loader` — one-time model availability gate
+3. `backend` — migrations, API, WebSocket, models, worker, and SQLite
+4. `frontend` — production React bundle and same-origin reverse proxy
+
+The `sentinel-guard-runtime` volume retains users, transactions, review
+history, audit jobs, and audit records across container replacement.
+
+### Create an administrator
+
+When demonstration mode is disabled, create the initial administrator from the
+running backend container:
+
+```bash
+docker compose exec backend \
+  python -m app.cli.create_admin \
+  --email admin@example.com \
+  --name "Sentinel Administrator"
+```
+
+### Stop
+
+```bash
+docker compose down
+```
+
+Named volumes remain intact. Removing the volumes also removes the local model
+and application database:
+
+```bash
+docker compose down --volumes
+```
+
+## Local development
+
+### Backend
 
 ```bash
 cd backend
 python -m venv venv
-source venv/bin/activate  # On Windows use: venv\Scripts\activate
+source venv/bin/activate
 pip install -r ../requirements.txt
 cp .env.example .env
-
-# Put the output of this command into JWT_SECRET_KEY in backend/.env
-openssl rand -hex 32
-
 alembic -c alembic.ini upgrade head
-
-# Create the first administrator interactively
-python -m app.cli.create_admin --email admin@example.com --name "Demo Admin"
-
-# Boot the FastAPI server instance on its local port
 uvicorn app.main:app --host 127.0.0.1 --port 8000
-
 ```
 
-### 4. Frontend Setup
+The backend environment requires a non-empty `JWT_SECRET_KEY`. Local report
+generation also requires Ollama with the configured model.
 
-Open a secondary console window, install the design packages, and spin up the React client:
+### Frontend
 
 ```bash
 cd frontend
-npm install
+npm ci
 npm run dev
-
 ```
 
-### Backend Docker Runtime
+The Vite development server proxies API and WebSocket traffic to
+`127.0.0.1:8000`.
 
-Start the persistent backend service while Ollama is running on the host
-machine:
+## Tests
 
 ```bash
-export JWT_SECRET_KEY="$(openssl rand -hex 32)"
-docker compose up --build
+cd backend
+JWT_SECRET_KEY=test-only-secret-key-with-at-least-32-characters \
+DEMO_MODE=true \
+venv/bin/python -m unittest discover -s tests -p 'test_*.py'
 ```
-
-Compose stores SQLite state in the named `sentinel-guard-runtime` volume, so
-transactions, audit jobs, and hash-linked records survive container
-replacement. The image uses `http://host.docker.internal:11434/api/generate`
-to reach host Ollama, with a host-gateway mapping for Linux. Override
-`OLLAMA_BASE_URL`, `OLLAMA_MODEL`, or `OLLAMA_TIMEOUT_SECONDS` when using a
-different Ollama deployment.
-
-The container applies pending Alembic migrations before starting the API.
-Public registration creates analysts only. Create the first administrator with
-the CLI command shown above; authenticated administrators can then manage roles
-and account status through `/api/v1/auth/users`.
-
-The small inference and synthetic knowledge-base assets required to run a fresh clone are
-versioned under `backend/data/`. Generated training data and mutable runtime
-state remain excluded. See the [model card](backend/data/MODEL_CARD.md) for
-evaluation results, limitations, and checksum verification.
-
----
-
-## Real-Time Verification Testing
-
-To verify the system end-to-end without waiting for manual entries, navigate to the **Sandbox Activity Stream** tab inside the dashboard.
-
-### Interactive Manual Testing
-
-You can input manual transactions using the custom sandbox panel. To trigger a forced system block and check the resulting LangGraph blockchain logs, pass an explicit high-risk anomaly signature:
 
 ```bash
-curl -X 'POST' \
-  '[http://127.0.0.1:8000/api/v1/evaluate](http://127.0.0.1:8000/api/v1/evaluate)' \
-  -H 'Authorization: Bearer <access_token>' \
-  -H 'Content-Type: application/json' \
-  -d '{
-  "amount_paise": 950000,
-  "device_id": "malicious_hardware_ring_01",
-  "card_id": "stolen_card_token_01",
-  "merchant_id": "7995"
-}'
-
+cd frontend
+npm test -- --run
+npm run build
 ```
 
-### Expected Output Results
+## Deployment notes
 
-Check your console logs and look inside `backend/data/compliance_audit.log` to read the generated signed audit output:
+The complete Compose stack is best suited to a Linux virtual machine because it
+requires persistent volumes, long-running WebSockets, SQLite single-writer
+coordination, and several gigabytes of memory for local inference.
 
-```text
+For a split cloud deployment:
 
-NEXUS FINTECH COMPLIANCE INCIDENT REPORT [ALERT-GATEWAY-REJECTION]
+- Serve the frontend from a static host or CDN.
+- Run the backend as exactly one worker while SQLite and the in-process audit
+  dispatcher are used.
+- Attach persistent storage for the database.
+- Point `OLLAMA_BASE_URL` at a private, persistent Ollama service.
+- Use HTTPS and WSS at the public edge.
+- Keep `DEMO_MODE=false` outside the portfolio sandbox.
 
-A. EXECUTIVE RISK VERDICT: Transaction blocked due to critical velocity breach...
-B. TECHNICAL SPECIFICATION PROFILE: Amount: 950000 Paise | MCC: 7995 (Gambling)
-C. REGULATORY COMPLIANCE CROSS-REFERENCE: Violates Sec 2.1 of Corporate spending...
-D. MITIGATION & ACTIONABLE DEFENSE ROADMAP: Compile FMR-1 matrix filing within 3 weeks...
-
-[CRYPTOGRAPHIC LEDGER CHAIN CHECK]
- |- PREVIOUS_ENTRY_HASH : 0000000000000000000000000000000000000000000000000000...
- |- CURRENT_RECORD_HASH : fe3f89bf87973661d652aa7d21194d46217a5a7573357bbac789...
-
-```
-
----
+Horizontal backend scaling requires moving the database to a shared server
+database and coordinating report jobs and WebSocket fan-out through shared
+infrastructure such as Redis.

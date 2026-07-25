@@ -3,7 +3,6 @@ from fastapi import WebSocket
 
 class WebSocketConnectionManager:
     def __init__(self) -> None:
-        # Holds active, listening frontend socket connection descriptors
         self.active_connections: list[WebSocket] = []
 
     async def connect(self, websocket: WebSocket, *, accept: bool = True) -> None:
@@ -28,6 +27,4 @@ class WebSocketConnectionManager:
         for connection in dead_connections:
             self.disconnect(connection)
 
-
-# Globally instantiated connection manager instance
 ws_manager = WebSocketConnectionManager()

@@ -165,8 +165,9 @@ async def evaluate_and_persist_transaction(
     Handles complete feature aggregation, event loop compute insulation,
     database indexing transactions, and stateful live ticker broadcasts.
     """
-    current_time = datetime.now()
-    timestamp_now_str = current_time.isoformat()
+    from datetime import timezone
+    current_time = datetime.now(timezone.utc)
+    timestamp_now_str = current_time.isoformat().replace("+00:00", "Z")
     tx_id = payload.transaction_id if payload.transaction_id else str(uuid.uuid4())
 
     card_id = payload.card_id

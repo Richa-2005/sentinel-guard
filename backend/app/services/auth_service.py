@@ -1,91 +1,54 @@
-"""Database operations for authentication and user administration."""
-
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
-
+import sqlite3
 from app.core.security import hash_password, verify_password
 from app.models.user import Roles, User
 
-
 class UserAlreadyExistsError(ValueError):
-    """Raised when a normalized email is already registered."""
-
+    pass
 
 def normalize_email(email: str) -> str:
-    """Return the canonical database representation of an email address."""
     return email.strip().lower()
 
-
-def get_user_by_email(session: Session, email: str) -> User | None:
-    """Find a user by normalized email."""
-    statement = select(User).where(User.email == normalize_email(email))
-    return session.scalar(statement)
-
-
-def get_user_by_id(session: Session, user_id: int) -> User | None:
-    """Find a user by primary key."""
-    return session.get(User, user_id)
-
-
-def create_user(
-    session: Session,
-    *,
-    email: str,
-    full_name: str,
-    plain_password: str,
-    role: Roles = Roles.ANALYST,
-) -> User:
-    """Create one user with a securely hashed password."""
-    user = User(
-        email=normalize_email(email),
-        full_name=" ".join(full_name.split()),
-        password_hash=hash_password(plain_password),
-        role=role,
-        is_active=True,
+def _row_to_user(row) -> User | None:
+    if not row:
+        return None
+    return User(
+        id=row["id"], email=row["email"], full_name=row["full_name"],
+        password_hash=row["password_hash"], role=Roles(row["role"]),
+        is_active=bool(row["is_active"]), created_at=row["created_at"], updated_at=row["updated_at"]
     )
-    session.add(user)
+
+def get_user_by_email(conn: sqlite3.Connection, email: str) -> User | None:
+    row = conn.execute("SELECT * FROM users WHERE email = ?", (normalize_email(email),)).fetchone()
+    return _row_to_user(row)
+
+def get_user_by_id(conn: sqlite3.Connection, user_id: int) -> User | None:
+    row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    return _row_to_user(row)
+
+def create_user(conn: sqlite3.Connection, *, email: str, full_name: str, plain_password: str, role: Roles = Roles.ANALYST) -> User:
     try:
-        session.commit()
-    except IntegrityError as exc:
-        session.rollback()
+        cursor = conn.execute(
+            "INSERT INTO users (email, full_name, password_hash, role, is_active) VALUES (?, ?, ?, ?, 1)",
+            (normalize_email(email), " ".join(full_name.split()), hash_password(plain_password), role.value)
+        )
+        return get_user_by_id(conn, cursor.lastrowid)
+    except sqlite3.IntegrityError as exc:
         raise UserAlreadyExistsError("An account with this email already exists") from exc
 
-    session.refresh(user)
-    return user
+def authenticate_user(conn: sqlite3.Connection, *, email: str, plain_password: str) -> User | None:
+    user = get_user_by_email(conn, email)
+    if user and verify_password(plain_password, user.password_hash):
+        return user
+    return None
 
+def list_users(conn: sqlite3.Connection) -> list[User]:
+    rows = conn.execute("SELECT * FROM users ORDER BY id").fetchall()
+    return [_row_to_user(r) for r in rows]
 
-def authenticate_user(
-    session: Session,
-    *,
-    email: str,
-    plain_password: str,
-) -> User | None:
-    """Return a user only when the supplied credentials are valid."""
-    user = get_user_by_email(session, email)
-    if user is None:
-        return None
-    if not verify_password(plain_password, user.password_hash):
-        return None
-    return user
+def set_user_role(conn: sqlite3.Connection, user: User, role: Roles) -> User:
+    conn.execute("UPDATE users SET role = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (role.value, user.id))
+    return get_user_by_id(conn, user.id)
 
-
-def list_users(session: Session) -> list[User]:
-    """Return users in stable creation order for the admin interface."""
-    return list(session.scalars(select(User).order_by(User.id)))
-
-
-def set_user_role(session: Session, user: User, role: Roles) -> User:
-    """Persist an administrator-approved role change."""
-    user.role = role
-    session.commit()
-    session.refresh(user)
-    return user
-
-
-def set_user_active_status(session: Session, user: User, is_active: bool) -> User:
-    """Enable or disable a user without deleting audit-relevant identity."""
-    user.is_active = is_active
-    session.commit()
-    session.refresh(user)
-    return user
+def set_user_active_status(conn: sqlite3.Connection, user: User, is_active: bool) -> User:
+    conn.execute("UPDATE users SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (int(is_active), user.id))
+    return get_user_by_id(conn, user.id)

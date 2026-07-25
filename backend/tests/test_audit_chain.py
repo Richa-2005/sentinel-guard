@@ -16,12 +16,8 @@ os.environ.setdefault(
 
 from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
-from sqlalchemy import create_engine, event  # noqa: E402
-from sqlalchemy.engine import URL  # noqa: E402
-from sqlalchemy.orm import sessionmaker  # noqa: E402
 
-from app.core.db_session import get_db  # noqa: E402
-from app.core.database import SentinelDatabase  # noqa: E402
+from app.core.database import SentinelDatabase, initialize_database  # noqa: E402
 from app.core.security import create_access_token  # noqa: E402
 from app.models.user import Roles  # noqa: E402
 from app.routers.audits import (  # noqa: E402
@@ -43,46 +39,13 @@ class AuditChainVerificationTests(unittest.TestCase):
             prefix="sentinel-audit-chain-tests-"
         )
         self.database_path = Path(self.temporary_directory.name) / "audit.db"
-        environment = os.environ.copy()
-        environment["SENTINEL_DATABASE_PATH"] = str(self.database_path)
-        subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "alembic",
-                "-c",
-                str(BACKEND_DIRECTORY / "alembic.ini"),
-                "upgrade",
-                "head",
-            ],
-            cwd=BACKEND_DIRECTORY,
-            env=environment,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
 
-        self.database = SentinelDatabase(self.database_path)
+        self.database = initialize_database(self.database_path)
         self.audit_service = AuditVaultService(self.database)
-        self.engine = create_engine(
-            URL.create(drivername="sqlite", database=str(self.database_path)),
-            connect_args={"check_same_thread": False},
-        )
 
-        @event.listens_for(self.engine, "connect")
-        def configure_sqlite(dbapi_connection, connection_record) -> None:
-            del connection_record
-            dbapi_connection.execute("PRAGMA foreign_keys=ON")
-
-        self.SessionLocal = sessionmaker(
-            bind=self.engine,
-            autoflush=False,
-            expire_on_commit=False,
-        )
-
-        with self.SessionLocal() as session:
+        with self.database.connection() as conn:
             user = create_user(
-                session,
+                conn,
                 email="auditor@example.com",
                 full_name="Audit Analyst",
                 plain_password="analyst-password",
@@ -91,16 +54,8 @@ class AuditChainVerificationTests(unittest.TestCase):
             token, _ = create_access_token(user.id)
         self.headers = {"Authorization": f"Bearer {token}"}
 
-        def override_get_db():
-            session = self.SessionLocal()
-            try:
-                yield session
-            finally:
-                session.close()
-
         verification_app = FastAPI()
         verification_app.include_router(audit_router)
-        verification_app.dependency_overrides[get_db] = override_get_db
         verification_app.dependency_overrides[
             get_audit_vault_service
         ] = lambda: self.audit_service
@@ -108,7 +63,6 @@ class AuditChainVerificationTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.client.close()
-        self.engine.dispose()
         self.temporary_directory.cleanup()
 
     def append_audit(self, transaction_id: str, memo: str) -> dict[str, object]:

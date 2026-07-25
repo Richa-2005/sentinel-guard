@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import sqlite3
 
 
 os.environ.setdefault(
@@ -16,12 +17,8 @@ os.environ.setdefault(
 
 from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
-from sqlalchemy import create_engine, event  # noqa: E402
-from sqlalchemy.engine import URL  # noqa: E402
-from sqlalchemy.orm import sessionmaker  # noqa: E402
 
-from app.core.database import SentinelDatabase  # noqa: E402
-from app.core.db_session import get_db  # noqa: E402
+from app.core.database import SentinelDatabase, initialize_database  # noqa: E402
 from app.core.security import create_access_token  # noqa: E402
 from app.models.user import Roles  # noqa: E402
 from app.routers.monitoring import (  # noqa: E402
@@ -51,52 +48,20 @@ class ModelMonitoringIntegrationTests(unittest.TestCase):
             prefix="sentinel-monitoring-tests-"
         )
         cls.database_path = Path(cls.temporary_directory.name) / "monitoring.db"
-        environment = os.environ.copy()
-        environment["SENTINEL_DATABASE_PATH"] = str(cls.database_path)
-        subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "alembic",
-                "-c",
-                str(BACKEND_DIRECTORY / "alembic.ini"),
-                "upgrade",
-                "head",
-            ],
-            cwd=BACKEND_DIRECTORY,
-            env=environment,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
 
-        cls.database = SentinelDatabase(cls.database_path)
+        cls.database = initialize_database(cls.database_path)
         cls.monitoring_service = ModelMonitoringService(cls.database)
-        cls.engine = create_engine(
-            URL.create(drivername="sqlite", database=str(cls.database_path)),
-            connect_args={"check_same_thread": False},
-        )
 
-        @event.listens_for(cls.engine, "connect")
-        def configure_sqlite(dbapi_connection, connection_record) -> None:
-            del connection_record
-            dbapi_connection.execute("PRAGMA foreign_keys=ON")
-
-        cls.SessionLocal = sessionmaker(
-            bind=cls.engine,
-            autoflush=False,
-            expire_on_commit=False,
-        )
-        with cls.SessionLocal() as session:
+        with cls.database.connection() as conn:
             cls.analyst = create_user(
-                session,
+                conn,
                 email="monitor-analyst@example.com",
                 full_name="Monitor Analyst",
                 plain_password="analyst-password",
                 role=Roles.ANALYST,
             )
             cls.admin = create_user(
-                session,
+                conn,
                 email="monitor-admin@example.com",
                 full_name="Monitor Admin",
                 plain_password="admin-password",
@@ -108,16 +73,26 @@ class ModelMonitoringIntegrationTests(unittest.TestCase):
         cls.now = datetime.now(timezone.utc).replace(microsecond=0)
         cls.seed_monitoring_data()
 
-        def override_get_db():
-            session = cls.SessionLocal()
+        def override_get_db_conn():
+            connection = sqlite3.connect(cls.database_path)
+            connection.row_factory = sqlite3.Row
             try:
-                yield session
+                connection.execute("PRAGMA journal_mode=WAL;")
+                connection.execute("PRAGMA synchronous=NORMAL;")
+                connection.execute("PRAGMA foreign_keys=ON;")
+                connection.execute("PRAGMA busy_timeout=30000;")
+                yield connection
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
             finally:
-                session.close()
+                connection.close()
 
+        from app.core.auth_dependencies import get_db_conn
         monitoring_app = FastAPI()
         monitoring_app.include_router(monitoring_router)
-        monitoring_app.dependency_overrides[get_db] = override_get_db
+        monitoring_app.dependency_overrides[get_db_conn] = override_get_db_conn
         monitoring_app.dependency_overrides[
             get_model_monitoring_service
         ] = lambda: cls.monitoring_service
@@ -126,7 +101,6 @@ class ModelMonitoringIntegrationTests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls) -> None:
         cls.client.close()
-        cls.engine.dispose()
         cls.temporary_directory.cleanup()
 
     @staticmethod
