@@ -2,7 +2,7 @@
 FROM python:3.11-slim AS builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential gcc g++ make
-COPY requirements.txt .
+COPY backend/requirements.txt ./
 RUN pip install --user --no-cache-dir -r requirements.txt
 
 # STAGE 2: Runner
