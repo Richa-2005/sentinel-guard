@@ -14,8 +14,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /root/.local /root/.local
-COPY . .
+COPY backend/ .
 ENV PATH=/root/.local/bin:$PATH
+ENV PYTHONPATH=/app
 EXPOSE 8000
 
 CMD ["gunicorn", "-w", "1", "-k", "uvicorn.workers.UvicornWorker", "app.main:app", "--bind", "0.0.0.0:8000"]
