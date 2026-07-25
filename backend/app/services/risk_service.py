@@ -12,6 +12,26 @@ from app.services.review_service import ensure_review_case_for_blocked_transacti
 db = SentinelDatabase()
 audit_service = AuditVaultService(db)
 
+
+def apply_demo_scenario_context(
+    demo_scenario: str | None,
+    *,
+    card_velocity: int,
+    device_card_ratio: float,
+    device_card_limit: float,
+    known_merchant: float,
+) -> tuple[int, float, float, float]:
+    """Return deterministic historical context only for an explicit demo burst."""
+    if demo_scenario != "fraud_burst":
+        return (
+            card_velocity,
+            device_card_ratio,
+            device_card_limit,
+            known_merchant,
+        )
+    return 4, 2.0, 0.0, 0.0
+
+
 async def _broadcast_safely(event: dict) -> None:
     """Broadcast without changing persisted audit state on socket failure."""
     try:
@@ -68,6 +88,10 @@ async def process_agent_audit_worker(
             audit_service,
         )
     except Exception as error:
+        print(
+            f"[Audit Worker] Audit {transaction_id} attempt failed: "
+            f"{type(error).__name__}: {error}"
+        )
         try:
             failure = await asyncio.to_thread(
                 audit_service.record_job_failure,
@@ -132,9 +156,10 @@ async def process_agent_audit_worker(
     })
 
 async def evaluate_and_persist_transaction(
-        payload, background_tasks, 
+        payload,
         ensemble_gate, explainer_bridge, 
-        compliance_agent
+        compliance_agent,
+        demo_scenario: str | None = None,
 ):
     """
     Handles complete feature aggregation, event loop compute insulation,
@@ -182,6 +207,24 @@ async def evaluate_and_persist_transaction(
         is_known_merchant = 1.0 if row_merchant["cnt"] >= 1 else 0.0
 
     is_off_hours_window = 1.0 if (1 <= current_time.hour <= 5) else 0.0
+
+    # Portfolio fraud bursts represent an already-observed behavioral attack,
+    # not a cold-start card. The model still calculates the decision normally;
+    # only the historical context is made deterministic for an explicit,
+    # authenticated demo identity.
+    (
+        card_vel_10m,
+        device_card_ratio_30m,
+        device_card_limit,
+        is_known_merchant,
+    ) = apply_demo_scenario_context(
+        demo_scenario,
+        card_velocity=card_vel_10m,
+        device_card_ratio=device_card_ratio_30m,
+        device_card_limit=device_card_limit,
+        known_merchant=is_known_merchant,
+    )
+
     raw_features = [
         float(payload.amount_paise),
         card_vel_10m,
@@ -269,12 +312,6 @@ async def evaluate_and_persist_transaction(
     })
 
     if is_blocked:
-        background_tasks.add_task(
-            process_agent_audit_worker,
-            tx_id,
-            compliance_agent,
-            audit_service,
-        )
         response_data["status"] = "Blocked (Audit Pending Background Compilation)"
         response_data["review_case_id"] = review_case_id
         
@@ -292,16 +329,14 @@ async def audit_job_dispatcher(
                 audit_service.find_ready_jobs
             )
 
-            if transaction_ids:
-                await asyncio.gather(
-                    *(
-                        process_agent_audit_worker(
-                            transaction_id,
-                            compliance_agent,
-                            audit_service,
-                        )
-                        for transaction_id in transaction_ids
-                    )
+            for transaction_id in transaction_ids:
+                # A local generation model is intentionally consumed by one
+                # durable worker at a time. Parallel prompts otherwise queue
+                # inside the model server and all share the same read timeout.
+                await process_agent_audit_worker(
+                    transaction_id,
+                    compliance_agent,
+                    audit_service,
                 )
 
         except asyncio.CancelledError:

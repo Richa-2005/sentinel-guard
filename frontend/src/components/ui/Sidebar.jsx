@@ -10,6 +10,7 @@ const analystLinks = [
 ];
 const adminLinks = [
   { to: '/app/operations', label: 'Operations', icon: Gauge },
+  { to: '/app/transactions', label: 'Transaction stream', icon: Activity },
   { to: '/app/reviews', label: 'Review control', icon: ShieldAlert, count: true },
   { to: '/app/model-health', label: 'Model health', icon: Activity },
   { to: '/app/vault', label: 'Audit vault', icon: Archive },

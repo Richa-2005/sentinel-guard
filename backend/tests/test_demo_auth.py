@@ -70,6 +70,16 @@ class DemoAuthenticationTests(unittest.TestCase):
                 2,
             )
             self.assertEqual(session.scalar(text("SELECT COUNT(*) FROM transactions_ledger WHERE transaction_id LIKE 'demo-v2-%'")), 72)
+            refreshed_windows = session.execute(text("""
+                SELECT
+                    SUM(CASE WHEN datetime(timestamp) >= datetime('now', '-24 hours') THEN 1 ELSE 0 END) AS current_count,
+                    SUM(CASE WHEN datetime(timestamp) < datetime('now', '-24 hours')
+                              AND datetime(timestamp) >= datetime('now', '-48 hours') THEN 1 ELSE 0 END) AS previous_count
+                FROM transactions_ledger
+                WHERE transaction_id LIKE 'demo-v2-%'
+            """)).mappings().one()
+            self.assertGreaterEqual(refreshed_windows["current_count"], 30)
+            self.assertGreaterEqual(refreshed_windows["previous_count"], 30)
             self.assertEqual(session.scalar(text("SELECT COUNT(*) FROM review_cases WHERE transaction_id LIKE 'demo-v2-%'")), 6)
             self.assertEqual(session.scalar(text("SELECT COUNT(*) FROM audit_vault WHERE transaction_id LIKE 'demo-v2-%'")), 5)
             shortest_report = session.scalar(text("SELECT MIN(length(compliance_memo)) FROM audit_vault WHERE transaction_id LIKE 'demo-v2-%'"))

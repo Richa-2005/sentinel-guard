@@ -25,7 +25,15 @@ export default function TopBar({ onMenu }) {
         <div><h1>{title}</h1><p>{subtitle}</p></div>
       </div>
       <div className="topbar-actions">
-        {isDemoSession && <button className={`live-demo-trigger ${demoStatus === 'running' ? 'is-running' : ''}`} onClick={() => setDemoControlOpen(true)}><Play size={14}/><span>{demoStatus === 'running' ? 'Demo running' : 'Run live demo'}</span></button>}
+        {isDemoSession && <div className="live-demo-help">
+          <button className={`live-demo-trigger ${demoStatus === 'running' ? 'is-running' : ''}`} onClick={() => setDemoControlOpen(true)} aria-describedby="live-demo-help">
+            <Play size={14}/><span>{demoStatus === 'running' ? 'Demo running' : 'Run live demo'}</span>
+          </button>
+          <div className="live-demo-popover" id="live-demo-help" role="tooltip">
+            <strong>Exercise the complete decision pipeline</strong>
+            <span>Generate controlled safe and risky transactions, watch WebSocket updates, and follow blocked decisions into review and audit.</span>
+          </div>
+        </div>}
         <div className="health-label" aria-live="polite"><span className={`status-dot status-dot--${health}`} />{health === 'online' ? 'Systems operational' : health === 'checking' ? 'Checking systems' : 'Risk core unavailable'}</div>
         <button className="icon-button" onClick={hydrate} disabled={loading} aria-label="Refresh workspace data" title="Refresh workspace data">
           <RefreshCw size={16} className={loading ? 'spin' : ''} />

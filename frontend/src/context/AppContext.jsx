@@ -4,9 +4,9 @@ import useWebSocketStream from '../hooks/useWebSocketStream';
 import { useAuth } from './AuthContext';
 
 const AppContext = createContext(null);
-const MAX_TRANSACTIONS = 200;
-const AUDIT_POLL_INTERVAL = 3000;
-const AUDIT_POLL_TIMEOUT = 90000;
+const MAX_TRANSACTIONS = 1000;
+const AUDIT_POLL_INTERVAL = 10000;
+const AUDIT_POLL_TIMEOUT = 240000;
 
 function transactionKey(entry) {
   return entry.transaction_id || [entry.timestamp, entry.card_id, entry.device_id, entry.merchant_id, entry.amount_paise].join(':');
@@ -72,7 +72,7 @@ function auditStatusFromJobs(jobs) {
 }
 
 export function AppProvider({ children }) {
-  const { accessToken, user } = useAuth();
+  const { accessToken, user, restoring } = useAuth();
   const [transactions, setTransactions] = useState([]);
   const [audits, setAudits] = useState([]);
   const [auditJobs, setAuditJobs] = useState([]);
@@ -175,15 +175,18 @@ export function AppProvider({ children }) {
     setDemoScenario(scenario);
     setDemoStatus('running');
     let sequence = 0;
+    const maximumEvents = scenario === 'fraud_burst' ? 4 : 10;
     const emit = () => {
       sequence += 1;
       const fraud = scenario === 'fraud_burst' || (scenario === 'mixed' && sequence % 5 === 0);
       submitDemoTransaction({
-        amount_paise: fraud ? 8700 + (sequence % 5) * 900 : 1800 + sequence * 137,
+        amount_paise: fraud ? 12380 : 1800 + sequence * 137,
         card_id: fraud ? `guided_risk_card_${sequence % 8}` : `guided_safe_card_${sequence % 4}`,
         device_id: fraud ? 'guided_device_ring_01' : `guided_trusted_device_${sequence % 5}`,
         merchant_id: fraud ? `risk_merchant_${sequence}` : ['5411', '5732', '5812'][sequence % 3],
+        ...(fraud ? { demo_scenario: 'fraud_burst' } : {}),
       }, scenario);
+      if (sequence >= maximumEvents) stopDemo();
     };
     emit();
     demoTimerRef.current = window.setInterval(emit, scenario === 'fraud_burst' ? 700 : 1100);
@@ -228,7 +231,9 @@ export function AppProvider({ children }) {
   }, [applyAuditJobs, applyAudits]);
 
   const stream = useWebSocketStream({
-    token: accessToken,
+    // Do not open the live channel from a cached session until the backend
+    // has confirmed that session through /auth/me.
+    token: restoring ? null : accessToken,
     onTransaction: handleTransaction,
     onAuditEvent: handleAuditEvent,
     onReconnect: resyncAfterReconnect,

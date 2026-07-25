@@ -8,9 +8,12 @@ services:
       - "8000:8000"
     environment:
       OLLAMA_BASE_URL: http://host.docker.internal:11434/api/generate
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.1}
+      OLLAMA_TIMEOUT_SECONDS: ${OLLAMA_TIMEOUT_SECONDS:-180}
       SENTINEL_DATABASE_PATH: /app/runtime/sentinel_storage.db
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      DEMO_MODE: ${DEMO_MODE:-false}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

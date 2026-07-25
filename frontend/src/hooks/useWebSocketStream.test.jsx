@@ -50,6 +50,13 @@ describe('useWebSocketStream', () => {
     expect(normalizeEvent(JSON.stringify({ data: {} }))).toBeNull();
   });
 
+  it('does not open the authenticated live channel before login', async () => {
+    const { result } = renderHook(() => useWebSocketStream());
+
+    await waitFor(() => expect(result.current.connectionStatus).toBe('offline'));
+    expect(MockWebSocket.instances).toHaveLength(0);
+  });
+
   it('reuses an in-flight handshake during the Strict Mode effect replay', () => {
     const wrapper = ({ children }) => <StrictMode>{children}</StrictMode>;
     const { result } = renderHook(() => useWebSocketStream({ token: 'test-token' }), { wrapper });

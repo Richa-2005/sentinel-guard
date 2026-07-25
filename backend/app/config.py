@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     SENTINEL_DATABASE_PATH: Path = DATA_DIR / "sentinel_storage.db"
     OLLAMA_BASE_URL: str = "http://127.0.0.1:11434/api/generate"
     OLLAMA_MODEL: str = "llama3.1"
-    OLLAMA_TIMEOUT_SECONDS: float = 60.0
+    OLLAMA_TIMEOUT_SECONDS: float = 180.0
     JWT_SECRET_KEY: SecretStr | None = None
     JWT_ALGORITHM: Literal["HS256"] = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=30, gt=0, le=1440)

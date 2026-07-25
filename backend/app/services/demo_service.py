@@ -11,6 +11,8 @@ from app.core.config import SystemRiskConfig
 
 
 DEMO_PREFIX = "demo-v2-"
+DEMO_TRANSACTION_COUNT = 72
+DEMO_INTERVAL_HOURS = 0.62
 
 
 def _utc(value: datetime) -> str:
@@ -23,6 +25,26 @@ def ensure_demo_environment(session: Session) -> None:
         text("SELECT 1 FROM transactions_ledger WHERE transaction_id LIKE 'demo-v2-%' LIMIT 1")
     ).first()
     if exists:
+        now = datetime.now(timezone.utc)
+        session.execute(
+            text(
+                "UPDATE transactions_ledger SET timestamp = :timestamp "
+                "WHERE transaction_id = :transaction_id"
+            ),
+            [
+                {
+                    "transaction_id": f"{DEMO_PREFIX}{index + 1:03d}",
+                    "timestamp": _utc(
+                        now + timedelta(
+                            hours=-(DEMO_TRANSACTION_COUNT - index)
+                            * DEMO_INTERVAL_HOURS
+                        )
+                    ),
+                }
+                for index in range(DEMO_TRANSACTION_COUNT)
+            ],
+        )
+        session.commit()
         return
 
     now = datetime.now(timezone.utc)
@@ -30,8 +52,8 @@ def ensure_demo_environment(session: Session) -> None:
     blocked_ids: list[str] = []
     rows = []
 
-    for index in range(72):
-        offset = -(72 - index) * 0.62
+    for index in range(DEMO_TRANSACTION_COUNT):
+        offset = -(DEMO_TRANSACTION_COUNT - index) * DEMO_INTERVAL_HOURS
         timestamp = now + timedelta(hours=offset)
         elevated = index % 6 == 0 or index % 11 == 0
         threshold = SystemRiskConfig.CALIBRATED_THRESHOLD

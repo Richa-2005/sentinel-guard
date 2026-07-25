@@ -56,6 +56,11 @@ export default function useWebSocketStream({ token, onTransaction, onAuditEvent,
 
   const connect = useCallback(() => {
     if (!mountedRef.current || typeof WebSocket === 'undefined') return;
+    if (!token) {
+      allowReconnectRef.current = false;
+      setConnectionStatus('offline');
+      return;
+    }
     allowReconnectRef.current = true;
     const current = socketRef.current;
     if (current && (current.readyState === WebSocket.OPEN || current.readyState === WebSocket.CONNECTING)) return;
@@ -68,11 +73,6 @@ export default function useWebSocketStream({ token, onTransaction, onAuditEvent,
     socket.onopen = () => {
       if (!mountedRef.current || !allowReconnectRef.current) {
         socket.close(1000, 'Client inactive');
-        return;
-      }
-      if (!token) {
-        setStreamError('Authentication is required for the live channel.');
-        socket.close(1008, 'Authentication required');
         return;
       }
       socket.send(JSON.stringify({ type: 'authenticate', token }));

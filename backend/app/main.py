@@ -4,7 +4,6 @@ from contextlib import suppress
 
 import uvicorn
 from fastapi import (
-    BackgroundTasks,
     Depends,
     FastAPI,
     HTTPException,
@@ -14,7 +13,7 @@ from fastapi import (
 from jwt.exceptions import InvalidTokenError
 
 from app.config import settings
-from app.core.auth_dependencies import get_current_user, require_admin
+from app.core.auth_dependencies import CurrentUser, get_current_user, require_admin
 from app.core.db_session import SessionLocal
 from app.core.security import decode_access_token, validate_auth_configuration
 from app.models.model import TransactionPayload
@@ -144,14 +143,25 @@ async def websocket_endpoint(websocket: WebSocket):
         ws_manager.disconnect(websocket)
 
 
-@app.post("/api/v1/evaluate", dependencies=[Depends(get_current_user)])
+@app.post("/api/v1/evaluate")
 async def evaluate_transaction(
     payload: TransactionPayload,
-    background_tasks: BackgroundTasks,
+    current_user: CurrentUser,
 ):
     """Intercept inbound transactions and map tasks through isolated compute pools."""
+    demo_scenario = (
+        payload.demo_scenario
+        if settings.DEMO_MODE
+        and current_user.email.startswith("demo.")
+        and current_user.email.endswith("@sentinelguard.dev")
+        else None
+    )
     return await evaluate_and_persist_transaction(
-        payload, background_tasks, ensemble_gate, explainer_bridge, compliance_agent
+        payload,
+        ensemble_gate,
+        explainer_bridge,
+        compliance_agent,
+        demo_scenario=demo_scenario,
     )
 
 
@@ -160,7 +170,7 @@ def get_transactions():
     """Historical transaction ledger bootstrapping hook."""
     try:
         with db.connection() as conn:
-            rows = conn.execute("SELECT * FROM transactions_ledger ORDER BY timestamp DESC LIMIT 200").fetchall()
+            rows = conn.execute("SELECT * FROM transactions_ledger ORDER BY timestamp DESC LIMIT 1000").fetchall()
             result = []
             for r in rows:
                 result.append({

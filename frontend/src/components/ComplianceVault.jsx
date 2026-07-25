@@ -6,11 +6,26 @@ import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { Badge, EmptyState, PageGuide } from './ui/Primitives';
 
-const improve=(text='')=>text.split('\n').map(line=>{
-  if(/^\s*#{1,6}\s/.test(line))return line;
-  if(/^(?:[A-D]\.\s*)?(EXECUTIVE RISK VERDICT|TECHNICAL SPECIFICATION PROFILE|REGULATORY COMPLIANCE CROSS-REFERENCE|COMPLIANCE CROSS-REFERENCE|MITIGATION AND ACTIONABLE DEFENCE ROADMAP)/i.test(line.trim()))return `## ${line.trim()}`;
-  return line;
-}).join('\n');
+const improve=(text='')=>{
+  const lines=text.replaceAll('```markdown','').replaceAll('```','').split('\n');
+  const firstSection=lines.findIndex(line=>/^\s*(?:#{1,3}\s*)?A\.\s*EXECUTIVE RISK VERDICT/i.test(line));
+  const relevant=(firstSection>=0?lines.slice(firstSection):lines).filter(line=>
+    !/^\s*(?:here is|below is|the following is) (?:the )?(?:mandatory )?(?:compliance )?report/i.test(line)
+    && !/^\s*NEXUS FINTECH COMPLIANCE INCIDENT REPORT/i.test(line)
+  );
+  return relevant.map(line=>{
+    const clean=line.trim();
+    if(/^\|/.test(clean)){
+      const cells=clean.split('|').map(cell=>cell.trim()).filter(Boolean);
+      if(!cells.length||cells.every(cell=>/^:?-{3,}:?$/.test(cell))||/^feature$/i.test(cells[0]))return '';
+      if(cells.length>=2)return `- **${cells[0].replaceAll('_',' ')}:** ${cells.slice(1).join(' · ')}`;
+    }
+    if(/^\s*#{1,6}\s/.test(line))return line;
+    if(/^[A-D]\.\s*(EXECUTIVE RISK VERDICT|TECHNICAL SPECIFICATION PROFILE|REGULATORY COMPLIANCE CROSS-REFERENCE|COMPLIANCE CROSS-REFERENCE|MITIGATION (?:&|AND) ACTIONABLE DEFEN[CS]E ROADMAP)\s*:?\s*$/i.test(clean))return `## ${clean.replace(/:$/,'')}`;
+    if(/^(Transaction details|Anomalies detected|Model evidence|Recommended actions):?$/i.test(clean))return `### ${clean.replace(/:$/,'')}`;
+    return line;
+  }).join('\n').trim();
+};
 const utc=(v)=>v?new Date(v).toLocaleString('en-GB',{timeZone:'UTC',hour12:false})+' UTC':'Historical record';
 
 function CopyButton({text,label='Copy report'}){const[copied,setCopied]=useState(false);const copy=async()=>{try{await navigator.clipboard.writeText(text||'')}catch{const area=document.createElement('textarea');area.value=text||'';area.style.position='fixed';area.style.opacity='0';document.body.appendChild(area);area.select();document.execCommand('copy');area.remove()}setCopied(true);setTimeout(()=>setCopied(false),1500)};return <button className="button button--secondary" onClick={copy} disabled={!text}>{copied?<Check size={14}/>:<Clipboard size={14}/>} {copied?'Copied':label}</button>}

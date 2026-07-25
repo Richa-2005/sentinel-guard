@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -14,4 +14,8 @@ class TransactionPayload(BaseModel):
         max_length=64,
         pattern=r"^[a-zA-Z0-9_-]+$",
         description="Client-side correlation tracking anchor",
+    )
+    demo_scenario: Optional[Literal["fraud_burst"]] = Field(
+        default=None,
+        description="Demo-only pre-hydrated behavioral scenario",
     )

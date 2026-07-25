@@ -375,7 +375,7 @@ class AuditVaultService:
 
         return raw_data, hydrated_metrics, shap_payload
     
-    def find_ready_jobs(self, limit: int = 5) -> list[str]:
+    def find_ready_jobs(self, limit: int = 1) -> list[str]:
         """Find pending jobs whose retry time has arrived."""
         now = _utc_now()
 
