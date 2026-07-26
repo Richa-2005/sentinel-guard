@@ -41,6 +41,8 @@ class ReviewCase:
     created_at: str
     updated_at: str
     resolved_at: str | None = None
+    reviewer_name: str | None = None
+    reviewer_email: str | None = None
 
 @dataclass
 class ReviewAction:

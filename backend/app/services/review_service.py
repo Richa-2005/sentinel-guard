@@ -47,6 +47,8 @@ def _row_to_case(row) -> ReviewCase | None:
         created_at=row["created_at"],
         updated_at=row["updated_at"],
         resolved_at=row["resolved_at"],
+        reviewer_name=row["reviewer_name"] if "reviewer_name" in row.keys() else None,
+        reviewer_email=row["reviewer_email"] if "reviewer_email" in row.keys() else None,
     )
 
 
@@ -147,24 +149,34 @@ def list_review_cases(
     filters = []
     params = []
     if status is not None:
-        filters.append("status = ?")
+        filters.append("rc.status = ?")
         params.append(status.value)
     if priority is not None:
-        filters.append("priority = ?")
+        filters.append("rc.priority = ?")
         params.append(priority.value)
     if assigned_to_user_id is not None:
-        filters.append("assigned_to_user_id = ?")
+        filters.append("rc.assigned_to_user_id = ?")
         params.append(assigned_to_user_id)
 
     where_clause = ""
     if filters:
         where_clause = " WHERE " + " AND ".join(filters)
 
-    count_query = f"SELECT COUNT(*) AS cnt FROM review_cases{where_clause}"
+    count_query = f"SELECT COUNT(*) AS cnt FROM review_cases rc{where_clause}"
     count_row = connection.execute(count_query, params).fetchone()
     total = int(count_row["cnt"] if count_row else 0)
 
-    query = f"SELECT * FROM review_cases{where_clause} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?"
+    query = f"""
+        SELECT 
+            rc.*,
+            u.full_name AS reviewer_name,
+            u.email AS reviewer_email
+        FROM review_cases rc
+        LEFT JOIN users u ON rc.assigned_to_user_id = u.id
+        {where_clause}
+        ORDER BY rc.created_at DESC, rc.id DESC
+        LIMIT ? OFFSET ?
+    """
     rows = connection.execute(query, params + [limit, offset]).fetchall()
     return [_row_to_case(r) for r in rows], total
 

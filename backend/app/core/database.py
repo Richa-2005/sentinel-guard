@@ -115,8 +115,10 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
 
     "CREATE INDEX IF NOT EXISTS idx_ledger_card_time ON transactions_ledger(card_id, timestamp);",
     "CREATE INDEX IF NOT EXISTS idx_ledger_device_time ON transactions_ledger(device_id, timestamp);",
+    "CREATE INDEX IF NOT EXISTS idx_ledger_timestamp ON transactions_ledger(timestamp);",
     "CREATE INDEX IF NOT EXISTS idx_audit_jobs_ready ON audit_jobs(status, next_attempt_at);",
     "CREATE INDEX IF NOT EXISTS idx_review_cases_queue ON review_cases(status, priority, created_at);",
+    "CREATE INDEX IF NOT EXISTS idx_review_cases_status ON review_cases(status);",
     "CREATE INDEX IF NOT EXISTS idx_review_cases_assignee ON review_cases(assigned_to_user_id, status);",
     "CREATE INDEX IF NOT EXISTS idx_review_actions_case_time ON review_actions(case_id, created_at);",
 

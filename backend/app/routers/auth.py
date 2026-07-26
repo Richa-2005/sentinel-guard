@@ -72,9 +72,10 @@ def login_demo(payload: DemoLoginRequest, conn: DbConnection):
         if not demo_user.is_active:
             demo_user = set_user_active_status(conn, demo_user, True)
         
-        # Demo identities are button-only. Rotating an unknown password prevents
-        # the regular credential endpoint from becoming an accidental backdoor.
-        conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (hash_password(secrets.token_urlsafe(48)), demo_user.id))
+        # Demo identities are button-only. Setting a dummy invalid password hash
+        # prevents the regular credential endpoint from becoming a backdoor without
+        # incurring expensive CPU hashing costs.
+        conn.execute("UPDATE users SET password_hash = 'demo_user_disabled_password' WHERE id = ?", (demo_user.id,))
         demo_users[role] = get_user_by_id(conn, demo_user.id)
 
     user = demo_users[payload.role]

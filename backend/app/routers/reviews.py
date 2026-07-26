@@ -45,14 +45,21 @@ DatabaseConnection = Annotated[sqlite3.Connection, Depends(get_db_conn)]
 def _serialize_case(connection: sqlite3.Connection, review_case) -> ReviewCaseResponse:
     data = ReviewCaseResponse.model_validate(review_case).model_dump()
     if review_case.assigned_to_user_id is not None:
-        from app.services.auth_service import get_user_by_id
-        reviewer = get_user_by_id(connection, review_case.assigned_to_user_id)
-        if reviewer is not None:
+        if getattr(review_case, "reviewer_name", None) is not None:
             data["assigned_reviewer"] = {
-                "id": reviewer.id,
-                "full_name": reviewer.full_name,
-                "email": reviewer.email,
+                "id": review_case.assigned_to_user_id,
+                "full_name": review_case.reviewer_name,
+                "email": review_case.reviewer_email,
             }
+        else:
+            from app.services.auth_service import get_user_by_id
+            reviewer = get_user_by_id(connection, review_case.assigned_to_user_id)
+            if reviewer is not None:
+                data["assigned_reviewer"] = {
+                    "id": reviewer.id,
+                    "full_name": reviewer.full_name,
+                    "email": reviewer.email,
+                }
     return ReviewCaseResponse(**data)
 
 
