@@ -1,8 +1,21 @@
 # Sentinel Guard
 
+<p align="center">
+  <img src="./docs/assets/hero.svg" alt="Sentinel Guard fraud-risk operations pipeline" width="100%">
+</p>
+
+
+
 Sentinel Guard is a portfolio-grade fraud operations platform that combines
 real-time transaction scoring, explainable ensemble decisions, human review,
 model monitoring, and tamper-evident compliance records.
+
+<p align="center">
+  <a href="https://sentinel-guard-app.vercel.app/"><strong>Live application</strong></a>
+  ·
+  <a href="./backend/data/MODEL_CARD.md"><strong>Model card</strong></a>
+</p>
+
 
 The project is designed around two authenticated roles:
 
@@ -17,31 +30,17 @@ The project is designed around two authenticated roles:
 
 ## Architecture
 
-```text
-Browser
-  │
-  ▼
-Nginx / React SPA
-  ├── /api/* ───────────────► FastAPI
-  └── /ws/* ────────────────► authenticated WebSocket
-                                  │
-                                  ├── XGBoost + LightGBM ensemble
-                                  ├── SHAP model explanations
-                                  ├── SQLite transaction/review ledger
-                                  └── durable single-report worker
-                                           │
-                                           ▼
-                                      Ollama / Llama 3.1
-                                           │
-                                           ▼
-                                  SHA-256 linked audit vault
-```
+The application is built around one continuous decision path: live transaction
+events enter the risk engine, the ensemble produces an explainable decision,
+blocked cases move through human review, and generated reports are preserved in
+a hash-linked audit ledger.
 
 The transaction response path performs feature hydration, model inference,
 SHAP explanation, persistence, review-case creation, and WebSocket delivery.
-Blocked transactions create durable report jobs. A single background worker
-processes those jobs so local model generation cannot overload the API or the
-model server.
+Blocked transactions create durable report jobs. A single in-process dispatcher
+claims ready jobs, runs the LangGraph compliance pipeline, calls Groq for the
+structured memorandum, retries failed jobs, and appends successful reports to
+the audit vault.
 
 ## Main capabilities
 
@@ -52,7 +51,7 @@ model server.
 - Separate per-model SHAP evidence
 - Authenticated live transaction delivery over WebSocket
 - Durable audit jobs with retry and interrupted-job recovery
-- Structured compliance memoranda generated through a local model service
+- Structured compliance memoranda generated through LangGraph and Groq
 - Downloadable Markdown reports
 - Analyst recommendation and administrator final-decision workflow
 - Optimistic case versioning to prevent stale updates
@@ -61,21 +60,29 @@ model server.
 - Prediction, review, latency, block-rate, and PSI monitoring
 - UTC timestamps as the canonical audit timeline
 - Seeded, role-specific portfolio demonstration mode
-- Alembic database migrations
-- Dockerized frontend, backend, model service, and persistent volumes
+- Vercel-hosted frontend with a Railway-hosted backend API
+
+<p align="center">
+  <img src="./docs/assets/audit-chain.svg" alt="Animated SHA-256 audit-chain continuity" width="88%">
+</p>
+
+<p align="center">
+  <img src="./docs/assets/model-monitoring.svg" alt="Animated model monitoring chart with threshold and PSI status" width="88%">
+</p>
 
 ## Runtime stack
 
 | Layer | Technology |
 | --- | --- |
-| Frontend | React, Vite, Nginx |
-| API and WebSocket | FastAPI, Uvicorn |
-| Persistence | SQLite WAL, SQLAlchemy, Alembic |
+| Frontend | React, Vite, Vercel |
+| API and WebSocket | FastAPI, Gunicorn, Uvicorn worker |
+| Backend host | Railway |
+| Persistence | SQLite WAL |
 | Classification | XGBoost, LightGBM |
 | Explainability | SHAP |
 | Report workflow | LangGraph |
-| Local generation | Ollama with Llama 3.1 |
-| Container orchestration | Docker Compose |
+| Memo generation | Groq, `llama-3.1-8b-instant` |
+| Auth | JWT, Argon2 password hashing |
 
 ## Model assets
 
@@ -83,80 +90,37 @@ The small inference artifacts and synthetic knowledge fixtures required for a
 reproducible clone are versioned under `backend/data/`. Generated datasets and
 runtime databases are excluded from Git.
 
-Image builds verify `backend/data/artifacts.sha256`; a checksum mismatch stops
-the backend image build. `requirements-runtime.txt` contains the production
-dependency set, while `requirements.txt` retains the broader local
-development and training environment. Detailed model scope, evaluation results, and
+The backend loads `xgb_compliance_gate.json`, `lgb_compliance_gate.txt`, and
+`model_config.json` at startup. Detailed model scope, evaluation results, and
 limitations are documented in
 [`backend/data/MODEL_CARD.md`](backend/data/MODEL_CARD.md).
 
-## Complete Docker deployment
+## Production deployment
 
-### Requirements
+The public build is split across two services:
 
-- Docker Engine with Docker Compose v2
-- Approximately 8 GB of free memory
-- Approximately 8 GB of free disk space for images and the local model
+- Frontend: Vercel serves the Vite React application.
+- Backend: Railway runs the FastAPI service with Gunicorn and one Uvicorn
+  worker.
 
-### Configuration
+The frontend production environment points directly at the Railway backend:
 
-```bash
-cp .env.example .env
-openssl rand -hex 32
+```env
+VITE_API_BASE_URL=https://sentinel-guard-backend.up.railway.app/api/v1
+VITE_WS_URL=wss://sentinel-guard-backend.up.railway.app/ws/live-feed
 ```
 
-Store the generated value as `JWT_SECRET_KEY` in the untracked root `.env`.
-Set `DEMO_MODE=true` only for the public portfolio demonstration.
+The backend requires:
 
-### Start
-
-```bash
-docker compose up --build
+```env
+JWT_SECRET_KEY=...
+GROQ_API_KEY=...
+DEMO_MODE=true
 ```
 
-On the first start, Compose downloads the configured Ollama image and model.
-The model is stored in the `sentinel-guard-models` volume and is reused on
-subsequent starts.
-
-Open:
-
-- Application: `http://localhost:8080`
-- API documentation through the frontend gateway: `http://localhost:8080/docs`
-
-Compose runs four coordinated services:
-
-1. `ollama` — persistent local inference server
-2. `model-loader` — one-time model availability gate
-3. `backend` — migrations, API, WebSocket, models, worker, and SQLite
-4. `frontend` — production React bundle and same-origin reverse proxy
-
-The `sentinel-guard-runtime` volume retains users, transactions, review
-history, audit jobs, and audit records across container replacement.
-
-### Create an administrator
-
-When demonstration mode is disabled, create the initial administrator from the
-running backend container:
-
-```bash
-docker compose exec backend \
-  python -m app.cli.create_admin \
-  --email admin@example.com \
-  --name "Sentinel Administrator"
-```
-
-### Stop
-
-```bash
-docker compose down
-```
-
-Named volumes remain intact. Removing the volumes also removes the local model
-and application database:
-
-```bash
-docker compose down --volumes
-```
+SQLite is used with WAL mode. The current backend process owns audit-job
+dispatch, WebSocket fan-out, and report generation, so production is designed
+for a single backend worker while this storage model is in use.
 
 ## Local development
 
@@ -166,14 +130,18 @@ docker compose down --volumes
 cd backend
 python -m venv venv
 source venv/bin/activate
-pip install -r ../requirements.txt
-cp .env.example .env
-alembic -c alembic.ini upgrade head
+pip install -r requirements.txt
+cat > .env <<'EOF'
+JWT_SECRET_KEY=local-development-secret-with-at-least-32-characters
+GROQ_API_KEY=your-groq-api-key
+DEMO_MODE=true
+EOF
 uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-The backend environment requires a non-empty `JWT_SECRET_KEY`. Local report
-generation also requires Ollama with the configured model.
+The backend initializes the SQLite schema on startup and stores the runtime
+database under `backend/data/sentinel_storage.db` unless
+`SENTINEL_DATABASE_PATH` is set.
 
 ### Frontend
 
@@ -203,20 +171,20 @@ npm run build
 
 ## Deployment notes
 
-The complete Compose stack is best suited to a Linux virtual machine because it
-requires persistent volumes, long-running WebSockets, SQLite single-writer
-coordination, and several gigabytes of memory for local inference.
+For a production environment beyond the portfolio sandbox:
 
-For a split cloud deployment:
-
-- Serve the frontend from a static host or CDN.
 - Run the backend as exactly one worker while SQLite and the in-process audit
   dispatcher are used.
-- Attach persistent storage for the database.
-- Point `OLLAMA_BASE_URL` at a private, persistent Ollama service.
+- Attach persistent storage for the SQLite database.
+- Set `GROQ_API_KEY` on the backend host; never expose it to the frontend.
 - Use HTTPS and WSS at the public edge.
-- Keep `DEMO_MODE=false` outside the portfolio sandbox.
+- Keep `DEMO_MODE=false` outside the public demo environment.
 
 Horizontal backend scaling requires moving the database to a shared server
 database and coordinating report jobs and WebSocket fan-out through shared
 infrastructure such as Redis.
+
+## Built by
+
+Sentinel Guard was designed and built by
+[Richa Gupta](https://www.linkedin.com/in/richa-gupta-cse).

@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="340" viewBox="0 0 1200 340" role="img" aria-labelledby="title desc">
+  <title id="title">Model monitoring and decision threshold</title>
+  <desc id="desc">A transparent animated chart showing risk score distribution, decision threshold, and population stability monitoring.</desc>
+  <defs>
+    <linearGradient id="bar" x1="0" x2="0" y1="1" y2="0">
+      <stop offset="0" stop-color="#2DD4BF"/>
+      <stop offset=".72" stop-color="#F4C95D"/>
+      <stop offset="1" stop-color="#FB7185"/>
+    </linearGradient>
+    <style>
+      .frame { fill: transparent; stroke: #5B6B82; stroke-width: 1.4; }
+      .axis { stroke: #43556D; stroke-width: 1; }
+      .threshold { stroke: #FB7185; stroke-width: 3; stroke-dasharray: 9 10; animation: dash 4.4s linear infinite; }
+      .tiny { fill: #8D9AAF; font: 700 14px 'JetBrains Mono', Consolas, monospace; letter-spacing: 1.2px; }
+      .title { fill: #E5EEF8; font: 800 23px Inter, Arial, sans-serif; }
+      .small { fill: #9AA8BA; font: 500 16px Inter, Arial, sans-serif; }
+      .mono { fill: #E5EEF8; font: 800 19px 'JetBrains Mono', Consolas, monospace; }
+      .bar { fill: url(#bar); transform-origin: bottom; animation: rise 3s ease-in-out infinite; }
+      .bar:nth-of-type(2n) { animation-delay: .18s; }
+      .bar:nth-of-type(3n) { animation-delay: .34s; }
+      .dot { animation: pulse 2.3s ease-in-out infinite; }
+      @keyframes dash { to { stroke-dashoffset: -90; } }
+      @keyframes rise { 0%,100% { opacity: .58; transform: scaleY(.86); } 50% { opacity: 1; transform: scaleY(1); } }
+      @keyframes pulse { 0%,100% { opacity: .4; } 50% { opacity: 1; } }
+    </style>
+  </defs>
+
+  <g transform="translate(50 42)">
+    <text class="tiny" x="0" y="0">MODEL HEALTH</text>
+    <text class="title" x="0" y="38">Monitoring asks whether risk behavior is changing.</text>
+    <text class="small" x="0" y="68">Distribution, block rate, review outcomes, and PSI keep the deployed gate observable.</text>
+  </g>
+
+  <g transform="translate(70 112)">
+    <rect class="frame" width="720" height="178" rx="22"/>
+    <path class="axis" d="M54 134H674M54 34V134"/>
+    <rect class="bar" x="94" y="88" width="34" height="46" rx="8"/>
+    <rect class="bar" x="154" y="70" width="34" height="64" rx="8"/>
+    <rect class="bar" x="214" y="46" width="34" height="88" rx="8"/>
+    <rect class="bar" x="274" y="62" width="34" height="72" rx="8"/>
+    <rect class="bar" x="334" y="84" width="34" height="50" rx="8"/>
+    <rect class="bar" x="394" y="102" width="34" height="32" rx="8"/>
+    <rect class="bar" x="454" y="94" width="34" height="40" rx="8"/>
+    <rect class="bar" x="514" y="72" width="34" height="62" rx="8"/>
+    <rect class="bar" x="574" y="42" width="34" height="92" rx="8"/>
+    <path class="threshold" d="M560 28V144"/>
+    <text class="tiny" x="486" y="24" fill="#FB7185">DECISION BOUNDARY</text>
+    <text class="tiny" x="54" y="162">0%</text>
+    <text class="tiny" x="630" y="162">100%</text>
+  </g>
+
+  <g transform="translate(850 112)">
+    <rect class="frame" width="280" height="178" rx="22"/>
+    <text class="tiny" x="28" y="42">POPULATION STABILITY</text>
+    <text class="mono" x="28" y="82">PSI 0.006</text>
+    <text class="small" x="28" y="116">stable score shape</text>
+    <circle class="dot" cx="218" cy="76" r="18" fill="#2DD4BF"/>
+    <text class="tiny" x="28" y="150">24h window · 44 predictions</text>
+  </g>
+</svg>

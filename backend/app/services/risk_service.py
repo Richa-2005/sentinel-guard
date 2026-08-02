@@ -328,9 +328,9 @@ async def audit_job_dispatcher(
             )
 
             for transaction_id in transaction_ids:
-                # A local generation model is intentionally consumed by one
-                # durable worker at a time. Parallel prompts otherwise queue
-                # inside the model server and all share the same read timeout.
+                # One durable worker processes Groq-backed report generation
+                # at a time so retries, broadcasts, and hash-chain writes stay
+                # ordered inside this SQLite-backed deployment.
                 await process_agent_audit_worker(
                     transaction_id,
                     compliance_agent,

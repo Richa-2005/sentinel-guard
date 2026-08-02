@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" role="img" aria-labelledby="title desc">
+  <title id="title">SHA-256 audit continuity</title>
+  <desc id="desc">A transparent animated diagram showing immutable audit records linked by previous and current hashes.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0 0 10 5 0 10Z" fill="#F4C95D"/>
+    </marker>
+    <style>
+      .record { fill: transparent; stroke: #5B6B82; stroke-width: 1.4; }
+      .hash { fill: transparent; stroke: #43556D; stroke-width: 1; }
+      .tiny { fill: #8D9AAF; font: 700 14px 'JetBrains Mono', Consolas, monospace; letter-spacing: 1.2px; }
+      .title { fill: #E5EEF8; font: 800 23px Inter, Arial, sans-serif; }
+      .small { fill: #9AA8BA; font: 500 16px Inter, Arial, sans-serif; }
+      .flow { fill: none; stroke: #F4C95D; stroke-width: 3; stroke-linecap: round; stroke-dasharray: 10 12; marker-end: url(#arrow); animation: move 4.8s linear infinite; }
+      .ok { animation: ok 2.6s ease-in-out infinite; }
+      @keyframes move { to { stroke-dashoffset: -110; } }
+      @keyframes ok { 0%,100% { opacity: .35; } 50% { opacity: 1; } }
+    </style>
+  </defs>
+
+  <text class="tiny" x="44" y="42">APPEND-ONLY LEDGER</text>
+  <text class="title" x="44" y="78">A report does not stand alone. It points back to the record before it.</text>
+
+  <g transform="translate(70 128)">
+    <rect class="record" width="250" height="112" rx="22"/>
+    <text class="tiny" x="24" y="34">RECORD #7</text>
+    <rect class="hash" x="24" y="58" width="170" height="32" rx="10"/>
+    <text class="small" x="42" y="80">current hash</text>
+  </g>
+
+  <path class="flow" d="M334 184H446"/>
+
+  <g transform="translate(460 128)">
+    <rect class="record" width="250" height="112" rx="22"/>
+    <text class="tiny" x="24" y="34">RECORD #8</text>
+    <rect class="hash" x="24" y="58" width="86" height="32" rx="10"/>
+    <text class="small" x="42" y="80">prev</text>
+    <rect class="hash" x="126" y="58" width="92" height="32" rx="10"/>
+    <text class="small" x="143" y="80">current</text>
+  </g>
+
+  <path class="flow" d="M724 184H836"/>
+
+  <g transform="translate(850 128)">
+    <rect class="record" width="250" height="112" rx="22"/>
+    <text class="tiny" x="24" y="34">RECORD #9</text>
+    <rect class="hash" x="24" y="58" width="86" height="32" rx="10"/>
+    <text class="small" x="42" y="80">prev</text>
+    <circle class="ok" cx="202" cy="74" r="15" fill="#2DD4BF"/>
+  </g>
+</svg>

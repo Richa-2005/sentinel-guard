@@ -1,0 +1,166 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1040" viewBox="0 0 1800 1040" role="img" aria-labelledby="title desc">
+  <title id="title">Sentinel Guard fraud-risk operations pipeline</title>
+  <desc id="desc">A dark technical architecture illustration showing a transaction moving through ensemble scoring, explainable evidence, human review, compliance reporting, and a hash-linked audit chain.</desc>
+  <defs>
+    <linearGradient id="panel" x1="0" x2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" x2="1">
+      <stop offset="0" stop-color="#2DD4BF"/>
+      <stop offset="1" stop-color="#F4C95D"/>
+    </linearGradient>
+    <linearGradient id="risk" x1="0" x2="1">
+      <stop offset="0" stop-color="#2DD4BF"/>
+      <stop offset=".58" stop-color="#F4C95D"/>
+      <stop offset="1" stop-color="#FB7185"/>
+    </linearGradient>
+    <filter id="softGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#020617" flood-opacity=".42"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8.4" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0 0 10 5 0 10Z" fill="#F4C95D"/>
+    </marker>
+    <style>
+      .micro { fill: #7B8A9D; font: 500 18px 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace; letter-spacing: 1.5px; }
+      .label { fill: #D9E4EF; font: 700 25px Inter, Arial, sans-serif; }
+      .small { fill: #91A1B5; font: 500 18px Inter, Arial, sans-serif; }
+      .mono { fill: #D9E4EF; font: 700 21px 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace; }
+      .tiny { fill: #7B8A9D; font: 600 15px 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace; letter-spacing: 1px; }
+      .panel { fill: transparent; stroke: #5B6B82; stroke-width: 1.3; opacity: .92; }
+      .chip { fill: transparent; stroke: #43556D; stroke-width: 1; }
+      .wire { fill: none; stroke: #F4C95D; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 11 13; marker-end: url(#arrow); opacity: .88; }
+      .wire2 { fill: none; stroke: #F4C95D; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 10 12; marker-end: url(#arrow); opacity: .82; }
+      .pulse { animation: pulse 2.8s ease-in-out infinite; transform-origin: center; }
+      .dash { animation: dash 6s linear infinite; }
+      .blink { animation: blink 2.2s ease-in-out infinite; }
+      @keyframes pulse { 0%,100% { opacity: .55; transform: scale(1); } 50% { opacity: 1; transform: scale(1.035); } }
+      @keyframes dash { to { stroke-dashoffset: -120; } }
+      @keyframes blink { 0%,100% { opacity: .38; } 50% { opacity: 1; } }
+    </style>
+  </defs>
+
+  <g transform="translate(90 28)">
+    <text x="0" y="56" fill="#F8FAFC" font-family="Inter, Arial, sans-serif" font-size="60" font-weight="800">Fraud decisions from signal to audit proof.</text>
+    <text class="small" x="2" y="106">Ensemble risk scoring, explainable evidence, generated memoranda, SHA-256 continuity, and accountable human decisions.</text>
+  </g>
+
+  <g transform="translate(1325 128)">
+    <rect width="390" height="92" rx="20" fill="transparent" stroke="#5B6B82"/>
+    <circle class="blink" cx="42" cy="53" r="12" fill="#2DD4BF" filter="url(#softGlow)"/>
+    <text class="tiny" x="70" y="38">LIVE RISK CHANNEL</text>
+    <text class="mono" x="70" y="68">WebSocket</text>
+    <text class="tiny" x="255" y="38" fill="#F4C95D">UTC TRACE</text>
+  </g>
+
+  <g>
+    <g transform="translate(80 315)">
+      <rect class="panel" width="275" height="226" rx="24"/>
+      <text class="tiny" x="30" y="44">01 / TRANSACTION</text>
+      <text class="label" x="30" y="83">Inbound payment</text>
+      <rect class="chip" x="30" y="112" width="214" height="42" rx="12"/>
+      <text class="mono" x="48" y="140">TX_7F2A</text>
+      <text class="small" x="10" y="180">Amount, card, device,merchant, </text>
+      <text class="small" x="45" y="200"> velocity, time window</text>
+      <circle class="pulse" cx="0" cy="15" r="16" fill="#2DD4BF" opacity=".9"/>
+    </g>
+
+    <g transform="translate(420 280)">
+      <rect class="panel" width="320" height="300" rx="26"/>
+      <text class="tiny" x="30" y="45">02 / ENSEMBLE GATE</text>
+      <text class="label" x="30" y="85">Two-model consensus</text>
+      <g transform="translate(31 120)">
+        <rect class="chip" width="258" height="54" rx="14"/>
+        <text class="tiny" x="18" y="23">XGBOOST</text>
+        <text class="mono" x="174" y="35">0.941</text>
+      </g>
+      <g transform="translate(31 188)">
+        <rect class="chip" width="258" height="54" rx="14"/>
+        <text class="tiny" x="18" y="23">LIGHTGBM</text>
+        <text class="mono" x="174" y="35">0.913</text>
+      </g>
+      <rect x="30" y="262" width="260" height="12" rx="6" fill="transparent" stroke="#43556D" stroke-width="1"/>
+      <rect x="30" y="262" width="238" height="12" rx="6" fill="url(#risk)"/>
+    </g>
+
+    <g transform="translate(805 315)">
+      <rect class="panel" width="400" height="226" rx="24"/>
+      <text class="tiny" x="30" y="44">03 / EXPLAINABILITY</text>
+      <text class="label" x="30" y="83">Signed evidence</text>
+      <g transform="translate(30 116)">
+        <text class="small" x="0" y="0">Card velocity</text>
+        <rect x="145" y="-14" width="138" height="12" rx="6" fill="#FB7185"/>
+        <text class="tiny" x="300" y="-3">+0.82</text>
+        <text class="small" x="0" y="42">Device reuse</text>
+        <rect x="145" y="28" width="112" height="12" rx="6" fill="#FB7185"/>
+        <text class="tiny" x="300" y="39">+0.67</text>
+        <text class="small" x="0" y="84">Known history</text>
+        <rect x="145" y="70" width="64" height="12" rx="6" fill="#2DD4BF"/>
+        <text class="tiny" x="300" y="81">-0.31</text>
+      </g>
+    </g>
+
+    <g transform="translate(1280 280)">
+      <rect class="panel" width="395" height="300" rx="26"/>
+      <text class="tiny" x="30" y="45">06 / HUMAN REVIEW</text>
+      <text class="label" x="30" y="85">Role-aware decision</text>
+      <g transform="translate(30 126)">
+        <circle cx="22" cy="22" r="22" fill="transparent" stroke="#2DD4BF"/>
+        <text class="tiny" x="60" y="18">ANALYST</text>
+        <text class="small" x="60" y="45">recommendation submitted</text>
+      </g>
+      <path d="M52 176V215" stroke="#324A64" stroke-width="3"/>
+      <g transform="translate(30 214)">
+        <circle cx="22" cy="22" r="22" fill="transparent" stroke="#F4C95D"/>
+        <text class="tiny" x="60" y="18">ADMINISTRATOR</text>
+        <text class="small" x="60" y="45">final verdict recorded</text>
+      </g>
+    </g>
+  </g>
+
+  <path class="wire dash" transform="translate(-60, 20)" d="M397 428C430 428 440 430 472 430"/>
+  <path class="wire dash" transform="translate(-60, 20)" d="M802 430C835 430 845 430 878 430"/>
+  <path class="wire dash" transform="translate(405, 20)" d="M802 430C835 430 845 430 878 430"/>
+
+  <g transform="translate(210 690)">
+    <rect class="panel" width="635" height="205" rx="26"/>
+    <text class="tiny" x="34" y="48">04 / COMPLIANCE MEMORANDUM</text>
+    <text class="label" x="34" y="88">Generated report captures</text>
+    <text class="label" x="34" y="117"> why the block happened.</text>
+    <rect x="34" y="126" width="450" height="12" rx="6" fill="#324A64"/>
+    <rect x="34" y="150" width="510" height="12" rx="6" fill="#223247"/>
+    <rect x="34" y="178" width="420" height="12" rx="6" fill="#223247"/>
+    <g transform="translate(500 20)">
+      <rect width="108" height="126" rx="16" fill="transparent" stroke="#43556D"/>
+      <path d="M25 34H82M25 58H82M25 82H67" stroke="#D9E4EF" stroke-width="6" stroke-linecap="round"/>
+    </g>
+  </g>
+
+  <g transform="translate(980 690)">
+    <rect class="panel" width="580" height="250" rx="26"/>
+    <text class="tiny" x="34" y="48">05 / SHA-256 AUDIT CONTINUITY</text>
+    <text class="label" x="34" y="88">Every record links to the one before it.</text>
+    <g transform="translate(36 130)">
+      <rect class="chip" width="142" height="42" rx="12"/>
+      <text class="tiny" x="19" y="27">prev hash</text>
+      <path d="M190 21H270" stroke="#F4C95D" stroke-width="3" stroke-dasharray="10 11" marker-end="url(#arrow)"/>
+      <rect class="chip" x="286" width="142" height="42" rx="12"/>
+      <text class="tiny" x="306" y="27">record #9</text>
+      <path d="M438 21H510" stroke="#F4C95D" stroke-width="3" stroke-dasharray="10 11" marker-end="url(#arrow)"/>
+    </g>
+    <text class="tiny" x="34" y="205" fill="#F4C95D">CHAIN VERIFICATION: 9 LINKS CHECKED</text>
+  </g>
+
+  <path class="wire2 dash" d="M640 582C640 630 560 655 525 682"/>
+  <path class="wire2 dash" d="M1060 544C1010 620 805 628 745 682"/>
+  <path class="wire2 dash" d="M846 792C895 792 925 792 972 792"/>
+  
+  <path class="wire2 dash" d="M1285 690C1345 635 1395 610 1432 585"/>
+</svg>
