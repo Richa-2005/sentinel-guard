@@ -1,4 +1,8 @@
 # Sentinel Guard
+<p align="center">
+  <a href="https://www.loom.com/share/0d4022c6d3cd4490bfb58eefebd1581e"><strong>Watch live demo</strong></a>
+</p>
+
 
 <p align="center">
   <img src="./docs/assets/hero.svg" alt="Sentinel Guard fraud-risk operations pipeline" width="100%">
@@ -6,7 +10,7 @@
 
 
 
-Sentinel Guard is a portfolio-grade fraud operations platform that combines
+Sentinel Guard is a fraud operations platform that combines
 real-time transaction scoring, explainable ensemble decisions, human review,
 model monitoring, and tamper-evident compliance records.
 
@@ -16,6 +20,9 @@ model monitoring, and tamper-evident compliance records.
   <a href="./backend/data/MODEL_CARD.md"><strong>Model card</strong></a>
 </p>
 
+<p align="center">
+  <a href="https://www.loom.com/share/0d4022c6d3cd4490bfb58eefebd1581e"><strong>Watch live demo</strong></a>
+</p>
 
 The project is designed around two authenticated roles:
 
