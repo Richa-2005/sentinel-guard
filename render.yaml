@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: sentinel-guard-backend
+    runtime: docker
+    plan: free
+    dockerContext: .
+    dockerfilePath: ./backend/Dockerfile
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: DEMO_MODE
+        value: "true"
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false

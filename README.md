@@ -67,7 +67,7 @@ the audit vault.
 - Prediction, review, latency, block-rate, and PSI monitoring
 - UTC timestamps as the canonical audit timeline
 - Seeded, role-specific portfolio demonstration mode
-- Vercel-hosted frontend with a Railway-hosted backend API
+- Vercel-hosted frontend with a Render-hosted backend API
 
 <p align="center">
   <img src="./docs/assets/audit-chain.svg" alt="Animated SHA-256 audit-chain continuity" width="88%">
@@ -83,7 +83,7 @@ the audit vault.
 | --- | --- |
 | Frontend | React, Vite, Vercel |
 | API and WebSocket | FastAPI, Gunicorn, Uvicorn worker |
-| Backend host | Railway |
+| Backend host | Render |
 | Persistence | SQLite WAL |
 | Classification | XGBoost, LightGBM |
 | Explainability | SHAP |
@@ -107,14 +107,14 @@ limitations are documented in
 The public build is split across two services:
 
 - Frontend: Vercel serves the Vite React application.
-- Backend: Railway runs the FastAPI service with Gunicorn and one Uvicorn
+- Backend: Render runs the FastAPI service with Gunicorn and one Uvicorn
   worker.
 
-The frontend production environment points directly at the Railway backend:
+The frontend production environment points directly at the Render backend:
 
 ```env
-VITE_API_BASE_URL=https://sentinel-guard-backend.up.railway.app/api/v1
-VITE_WS_URL=wss://sentinel-guard-backend.up.railway.app/ws/live-feed
+VITE_API_BASE_URL=https://sentinel-guard-backend.onrender.com/api/v1
+VITE_WS_URL=wss://sentinel-guard-backend.onrender.com/ws/live-feed
 ```
 
 The backend requires:
@@ -128,6 +128,29 @@ DEMO_MODE=true
 SQLite is used with WAL mode. The current backend process owns audit-job
 dispatch, WebSocket fan-out, and report generation, so production is designed
 for a single backend worker while this storage model is in use.
+
+### Render backend setup
+
+The repository includes `render.yaml` for creating the backend as a Docker web
+service from the repo root. In Render:
+
+1. Create a new Blueprint from this repository, or create a Docker web service
+   manually with `backend/Dockerfile`.
+2. Set these backend environment variables:
+
+```env
+JWT_SECRET_KEY=your-production-secret-with-at-least-32-characters
+GROQ_API_KEY=your-groq-api-key
+DEMO_MODE=true
+```
+
+3. Use `/healthz` as the health check path.
+4. Keep one backend worker while SQLite is used.
+
+Render provides the `PORT` environment variable at runtime, and the Dockerfile
+binds Gunicorn to that port automatically. If you choose a different Render
+service name, update Vercel's `VITE_API_BASE_URL` and `VITE_WS_URL` values to
+match the generated `*.onrender.com` backend URL.
 
 ## Local development
 
