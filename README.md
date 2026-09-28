@@ -88,7 +88,7 @@ the audit vault.
 | Classification | XGBoost, LightGBM |
 | Explainability | SHAP |
 | Report workflow | LangGraph |
-| Memo generation | Groq, `llama-3.1-8b-instant` |
+| Memo generation | Groq, `openai/gpt-oss-20b` |
 | Auth | JWT, Argon2 password hashing |
 
 ## Model assets
@@ -122,6 +122,7 @@ The backend requires:
 ```env
 JWT_SECRET_KEY=...
 GROQ_API_KEY=...
+GROQ_MODEL=openai/gpt-oss-20b
 DEMO_MODE=true
 ```
 
@@ -141,6 +142,7 @@ service from the repo root. In Render:
 ```env
 JWT_SECRET_KEY=your-production-secret-with-at-least-32-characters
 GROQ_API_KEY=your-groq-api-key
+GROQ_MODEL=openai/gpt-oss-20b
 DEMO_MODE=true
 ```
 

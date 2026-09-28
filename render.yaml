@@ -10,6 +10,8 @@ services:
     envVars:
       - key: DEMO_MODE
         value: "true"
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-20b
       - key: JWT_SECRET_KEY
         sync: false
       - key: GROQ_API_KEY

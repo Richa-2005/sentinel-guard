@@ -189,7 +189,7 @@ OUTPUT CONTRACT — FOLLOW EXACTLY:
 """
 
     llm = ChatGroq(
-        model="llama-3.1-8b-instant", 
+        model=settings.GROQ_MODEL,
         temperature=0.1, 
         api_key=settings.GROQ_API_KEY
     )

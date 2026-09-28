@@ -25,6 +25,7 @@ class Settings(BaseSettings):
 
     # API Keys
     GROQ_API_KEY: str = ""
+    GROQ_MODEL: str = "openai/gpt-oss-20b"
     BASE_DIR : Path= Path(__file__).resolve().parents[1]
     DATA_DIR :Path = BASE_DIR / "data"
     MODEL_CONFIG_PATH : Path = DATA_DIR / "model_config.json"
